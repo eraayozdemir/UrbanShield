@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		AA000001000000000000AA01 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = AA000001000000000000AA02 /* Supabase */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		2A5FCED02F81110100D3A120 /* UrbanShield.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UrbanShield.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA000001000000000000AA01 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +70,7 @@
 			);
 			name = UrbanShield;
 			packageProductDependencies = (
+				AA000001000000000000AA02 /* Supabase */,
 			);
 			productName = UrbanShield;
 			productReference = 2A5FCED02F81110100D3A120 /* UrbanShield.app */;
@@ -94,6 +100,9 @@
 			);
 			mainGroup = 2A5FCEC72F81110100D3A120;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				AA000001000000000000AA00 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 2A5FCED12F81110100D3A120 /* Products */;
 			projectDirPath = "";
@@ -332,6 +341,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		AA000001000000000000AA00 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AA000001000000000000AA02 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA000001000000000000AA00 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 2A5FCEC82F81110100D3A120 /* Project object */;
 }

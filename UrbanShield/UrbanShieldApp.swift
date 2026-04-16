@@ -6,12 +6,14 @@
 //
 
 import SwiftUI
+import Supabase
 
 @main
 struct UrbanShieldApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(\.supabaseClient, supabase)
         }
     }
 }
