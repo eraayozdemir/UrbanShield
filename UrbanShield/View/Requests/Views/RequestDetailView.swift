@@ -20,62 +20,66 @@ struct RequestDetailView: View {
     }
 
     var body: some View {
-        Group {
+        ZStack {
+            RequestUI.background
+                .ignoresSafeArea()
+
             if viewModel.isLoading && viewModel.request == nil {
-                ProgressView("Loading request...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                DetailLoadingView()
             } else if let request = viewModel.request {
-                Form {
-                    Section("Status") {
-                        DetailRow(title: "Current Status", value: request.statusValue.title)
-                        DetailRow(title: "Urgency", value: request.urgencyValue.title)
-                    }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        detailHeader(request)
 
-                    Section("Request") {
-                        DetailRow(title: "Type", value: request.requestTypeValue.title)
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Description")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            Text(request.description)
-                        }
-                    }
+                        RequestCard {
+                            RequestSectionTitle(title: "Status", systemImage: "checklist")
 
-                    Section("Location") {
-                        DetailRow(title: "Latitude", value: String(request.latitude))
-                        DetailRow(title: "Longitude", value: String(request.longitude))
-                    }
-
-                    Section("Dates") {
-                        DetailRow(
-                            title: "Created",
-                            value: request.createdAt.formatted(date: .abbreviated, time: .shortened)
-                        )
-                        DetailRow(
-                            title: "Updated",
-                            value: request.updatedAt.formatted(date: .abbreviated, time: .shortened)
-                        )
-                    }
-
-                    if request.statusValue.canBeCancelled {
-                        Section {
-                            Button(role: .destructive) {
-                                showCancelConfirmation = true
-                            } label: {
-                                HStack {
-                                    Spacer()
-                                    if viewModel.isCancelling {
-                                        ProgressView()
-                                    } else {
-                                        Text("Cancel Request")
-                                            .fontWeight(.semibold)
-                                    }
-                                    Spacer()
-                                }
+                            HStack(spacing: 10) {
+                                RequestStatusChip(status: request.statusValue)
+                                RequestUrgencyChip(urgency: request.urgencyValue)
                             }
-                            .disabled(viewModel.isCancelling)
+                        }
+
+                        RequestCard {
+                            RequestSectionTitle(title: "Description", systemImage: "text.alignleft")
+
+                            Text(request.description)
+                                .font(.body)
+                                .foregroundStyle(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        RequestCard {
+                            RequestSectionTitle(title: "Location", systemImage: "location.fill")
+
+                            HStack(spacing: 10) {
+                                DetailMetric(
+                                    title: "Latitude",
+                                    value: coordinateText(request.latitude)
+                                )
+                                DetailMetric(
+                                    title: "Longitude",
+                                    value: coordinateText(request.longitude)
+                                )
+                            }
+                        }
+
+                        RequestCard {
+                            RequestSectionTitle(title: "Timeline", systemImage: "clock.fill")
+
+                            DetailRow(
+                                title: "Created",
+                                value: request.createdAt.formatted(date: .abbreviated, time: .shortened)
+                            )
+                            Divider()
+                            DetailRow(
+                                title: "Updated",
+                                value: request.updatedAt.formatted(date: .abbreviated, time: .shortened)
+                            )
                         }
                     }
+                    .padding(16)
+                    .padding(.bottom, request.statusValue.canBeCancelled ? 86 : 16)
                 }
             } else {
                 ContentUnavailableView(
@@ -87,6 +91,32 @@ struct RequestDetailView: View {
         }
         .navigationTitle("Request Detail")
         .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) {
+            if viewModel.request?.statusValue.canBeCancelled == true {
+                VStack(spacing: 10) {
+                    Button(role: .destructive) {
+                        showCancelConfirmation = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            if viewModel.isCancelling {
+                                ProgressView()
+                            } else {
+                                Image(systemName: "xmark.circle.fill")
+                                Text("Cancel Request")
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 52)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(viewModel.isCancelling)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                }
+                .background(.regularMaterial)
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -101,12 +131,7 @@ struct RequestDetailView: View {
         }
         .overlay(alignment: .bottom) {
             if let error = viewModel.errorMessage {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(.white)
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(.red)
+                RequestErrorBanner(message: error)
             }
         }
         .confirmationDialog(
@@ -127,6 +152,32 @@ struct RequestDetailView: View {
             await viewModel.loadRequest(id: requestId)
         }
     }
+
+    private func detailHeader(_ request: HelpRequestRecord) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: RequestUI.requestIcon(request.requestTypeValue))
+                .font(.title2)
+                .foregroundStyle(RequestUI.urgencyColor(request.urgencyValue))
+                .frame(width: 46, height: 46)
+                .background(RequestUI.urgencyColor(request.urgencyValue).opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(request.requestTypeValue.title)
+                    .font(.title2.bold())
+                Text("Request ID \(request.id.uuidString.prefix(8))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func coordinateText(_ coordinate: Double) -> String {
+        coordinate.formatted(.number.precision(.fractionLength(4...6)))
+    }
 }
 
 private struct DetailRow: View {
@@ -141,5 +192,39 @@ private struct DetailRow: View {
             Text(value)
                 .multilineTextAlignment(.trailing)
         }
+    }
+}
+
+private struct DetailMetric: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.tertiarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct DetailLoadingView: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+            Text("Loading request...")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
