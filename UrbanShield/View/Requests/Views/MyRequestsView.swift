@@ -10,6 +10,7 @@ struct MyRequestsView: View {
 
     @State private var viewModel = MyRequestsViewModel()
     @State private var selectedFilter: RequestListFilter = .all
+    private let horizontalPadding: CGFloat = 16
 
     private var currentUser: User? {
         if case .authenticated(let user) = sessionViewModel.session {
@@ -34,30 +35,29 @@ struct MyRequestsView: View {
             } else if filteredRequests.isEmpty {
                 filteredEmptyState
             } else {
-                List(filteredRequests) { request in
-                    NavigationLink {
-                        RequestDetailView(
-                            requestId: request.id,
-                            sessionViewModel: sessionViewModel
-                        )
-                    } label: {
-                        RequestRowView(request: request)
-                    }
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 7, leading: 16, bottom: 7, trailing: 16))
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .safeAreaInset(edge: .top) {
-                    VStack(spacing: 12) {
+                ScrollView {
+                    LazyVStack(spacing: 12) {
                         RequestSummaryBar(requests: viewModel.requests)
+                            .padding(.horizontal, horizontalPadding)
+                            .padding(.top, 8)
+
                         RequestFilterBar(selection: $selectedFilter)
+                            .padding(.bottom, 4)
+
+                        ForEach(filteredRequests) { request in
+                            NavigationLink {
+                                RequestDetailView(
+                                    requestId: request.id,
+                                    sessionViewModel: sessionViewModel
+                                )
+                            } label: {
+                                RequestRowView(request: request)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, horizontalPadding)
+                        }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 8)
-                    .background(RequestUI.background)
+                    .padding(.bottom, 18)
                 }
                 .refreshable {
                     await viewModel.loadRequests(citizenId: currentUser?.id)
@@ -135,7 +135,6 @@ struct MyRequestsView: View {
             )
 
             RequestFilterBar(selection: $selectedFilter)
-                .padding(.horizontal, 16)
 
             Button {
                 selectedFilter = .all
@@ -166,12 +165,21 @@ private enum RequestListFilter: String, CaseIterable, Identifiable {
         }
     }
 
+    var systemImage: String {
+        switch self {
+        case .all: return "square.grid.2x2.fill"
+        case .active: return "bolt.fill"
+        case .completed: return "checkmark.circle.fill"
+        case .cancelled: return "xmark.circle.fill"
+        }
+    }
+
     func includes(_ request: HelpRequestRecord) -> Bool {
         switch self {
         case .all:
             return true
         case .active:
-            return request.statusValue == .open || request.statusValue == .inProgress
+            return request.statusValue.isActive
         case .completed:
             return request.statusValue == .completed
         case .cancelled:
@@ -228,7 +236,9 @@ private struct RequestRowView: View {
                 }
             }
             .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(RequestUI.card)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .contentShape(Rectangle())
@@ -245,7 +255,7 @@ private struct RequestSummaryBar: View {
     let requests: [HelpRequestRecord]
 
     private var openCount: Int {
-        requests.filter { $0.statusValue == .open || $0.statusValue == .inProgress }.count
+        requests.filter { $0.statusValue.isActive }.count
     }
 
     private var criticalCount: Int {
@@ -298,12 +308,41 @@ private struct RequestFilterBar: View {
     @Binding var selection: RequestListFilter
 
     var body: some View {
-        Picker("Request Filter", selection: $selection) {
-            ForEach(RequestListFilter.allCases) { filter in
-                Text(filter.title).tag(filter)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(RequestListFilter.allCases) { filter in
+                    Button {
+                        withAnimation(.snappy(duration: 0.18)) {
+                            selection = filter
+                        }
+                    } label: {
+                        HStack(spacing: 7) {
+                            Image(systemName: filter.systemImage)
+                                .font(.caption.weight(.semibold))
+
+                            Text(filter.title)
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .foregroundStyle(selection == filter ? .white : .primary)
+                        .padding(.horizontal, 14)
+                        .frame(height: 38)
+                        .background {
+                            Capsule()
+                                .fill(selection == filter ? Color.accentColor : RequestUI.card)
+                        }
+                        .overlay {
+                            Capsule()
+                                .strokeBorder(Color.primary.opacity(selection == filter ? 0 : 0.06))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(filter.title) requests")
+                    .accessibilityValue(selection == filter ? "Selected" : "Not selected")
+                }
             }
+            .padding(.horizontal, 16)
         }
-        .pickerStyle(.segmented)
+        .frame(height: 42)
     }
 }
 

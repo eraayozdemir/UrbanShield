@@ -38,6 +38,8 @@ struct RequestDetailView: View {
                                 RequestStatusChip(status: request.statusValue)
                                 RequestUrgencyChip(urgency: request.urgencyValue)
                             }
+
+                            RequestProgressView(status: request.statusValue)
                         }
 
                         RequestCard {
@@ -79,7 +81,7 @@ struct RequestDetailView: View {
                         }
                     }
                     .padding(16)
-                    .padding(.bottom, request.statusValue.canBeCancelled ? 86 : 16)
+                    .padding(.bottom, bottomActionPadding(for: request))
                 }
             } else {
                 ContentUnavailableView(
@@ -92,7 +94,7 @@ struct RequestDetailView: View {
         .navigationTitle("Request Detail")
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
-            if viewModel.request?.statusValue.canBeCancelled == true {
+            if let request = viewModel.request, shouldShowCitizenCancel(for: request) {
                 VStack(spacing: 10) {
                     Button(role: .destructive) {
                         showCancelConfirmation = true
@@ -111,6 +113,36 @@ struct RequestDetailView: View {
                     }
                     .buttonStyle(.bordered)
                     .disabled(viewModel.isCancelling)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                }
+                .background(.regularMaterial)
+            } else if let request = viewModel.request, shouldShowVolunteerAction(for: request) {
+                VStack(spacing: 10) {
+                    Button {
+                        Task {
+                            if request.statusValue == .confirmed {
+                                await viewModel.startVolunteerWork(id: requestId, volunteerId: currentUser?.id)
+                            } else {
+                                await viewModel.completeVolunteerWork(id: requestId, volunteerId: currentUser?.id)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if viewModel.isUpdatingStatus {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: volunteerActionIcon(for: request))
+                                Text(volunteerActionTitle(for: request))
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 52)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(viewModel.isUpdatingStatus)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
                 }
@@ -178,6 +210,27 @@ struct RequestDetailView: View {
     private func coordinateText(_ coordinate: Double) -> String {
         coordinate.formatted(.number.precision(.fractionLength(4...6)))
     }
+
+    private func shouldShowCitizenCancel(for request: HelpRequestRecord) -> Bool {
+        request.citizenId == currentUser?.id && request.statusValue.canBeCancelled
+    }
+
+    private func shouldShowVolunteerAction(for request: HelpRequestRecord) -> Bool {
+        request.volunteerId == currentUser?.id
+            && (request.statusValue == .confirmed || request.statusValue == .inProgress)
+    }
+
+    private func bottomActionPadding(for request: HelpRequestRecord) -> CGFloat {
+        shouldShowCitizenCancel(for: request) || shouldShowVolunteerAction(for: request) ? 86 : 16
+    }
+
+    private func volunteerActionTitle(for request: HelpRequestRecord) -> String {
+        request.statusValue == .confirmed ? "Start Response" : "Mark Completed"
+    }
+
+    private func volunteerActionIcon(for request: HelpRequestRecord) -> String {
+        request.statusValue == .confirmed ? "play.fill" : "checkmark.circle.fill"
+    }
 }
 
 private struct DetailRow: View {
@@ -214,6 +267,81 @@ private struct DetailMetric: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.tertiarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct RequestProgressView: View {
+    let status: HelpRequestStatus
+
+    private let flow: [HelpRequestStatus] = [.open, .confirmed, .inProgress, .completed]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Request Flow")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                ForEach(Array(flow.enumerated()), id: \.element.id) { index, step in
+                    ProgressStep(
+                        status: step,
+                        isReached: isReached(step),
+                        isCurrent: status == step
+                    )
+
+                    if index < flow.count - 1 {
+                        Rectangle()
+                            .fill(lineColor(after: step))
+                            .frame(height: 2)
+                    }
+                }
+            }
+
+            if status == .cancelled {
+                Label("This request was cancelled before completion.", systemImage: "xmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    private func isReached(_ step: HelpRequestStatus) -> Bool {
+        guard status != .cancelled,
+              let currentIndex = flow.firstIndex(of: status),
+              let stepIndex = flow.firstIndex(of: step) else {
+            return false
+        }
+        return stepIndex <= currentIndex
+    }
+
+    private func lineColor(after step: HelpRequestStatus) -> Color {
+        guard status != .cancelled,
+              let currentIndex = flow.firstIndex(of: status),
+              let stepIndex = flow.firstIndex(of: step) else {
+            return Color(.separator)
+        }
+        return stepIndex < currentIndex ? RequestUI.statusColor(status) : Color(.separator)
+    }
+}
+
+private struct ProgressStep: View {
+    let status: HelpRequestStatus
+    let isReached: Bool
+    let isCurrent: Bool
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: isReached ? "checkmark.circle.fill" : "circle")
+                .font(.headline)
+                .foregroundStyle(isReached ? RequestUI.statusColor(status) : .secondary)
+
+            Text(status.shortTitle)
+                .font(.caption2.weight(isCurrent ? .bold : .regular))
+                .foregroundStyle(isCurrent ? .primary : .secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(width: 54)
     }
 }
 

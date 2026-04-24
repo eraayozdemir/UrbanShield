@@ -12,6 +12,7 @@ enum RequestUI {
     static func statusColor(_ status: HelpRequestStatus) -> Color {
         switch status {
         case .open: return .blue
+        case .confirmed: return .purple
         case .inProgress: return .orange
         case .completed: return .green
         case .cancelled: return .red
@@ -106,6 +107,23 @@ struct RequestErrorBanner: View {
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.red)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+    }
+}
+
+struct RequestInfoBanner: View {
+    let message: String
+    let color: Color
+
+    var body: some View {
+        Label(message, systemImage: "checkmark.circle.fill")
+            .font(.footnote)
+            .foregroundStyle(.white)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(color)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .padding(.horizontal, 16)
             .padding(.bottom, 12)

@@ -47,6 +47,7 @@ enum HelpRequestUrgency: String, CaseIterable, Identifiable, Codable {
 
 enum HelpRequestStatus: String, CaseIterable, Identifiable, Codable {
     case open
+    case confirmed
     case inProgress = "in_progress"
     case completed
     case cancelled
@@ -56,20 +57,36 @@ enum HelpRequestStatus: String, CaseIterable, Identifiable, Codable {
     var title: String {
         switch self {
         case .open: return "Open"
+        case .confirmed: return "Confirmed"
         case .inProgress: return "In Progress"
         case .completed: return "Completed"
         case .cancelled: return "Cancelled"
         }
     }
 
+    var shortTitle: String {
+        switch self {
+        case .open: return "Open"
+        case .confirmed: return "Confirm"
+        case .inProgress: return "Progress"
+        case .completed: return "Done"
+        case .cancelled: return "Cancel"
+        }
+    }
+
     var canBeCancelled: Bool {
-        self == .open || self == .inProgress
+        self == .open || self == .confirmed || self == .inProgress
+    }
+
+    var isActive: Bool {
+        self == .open || self == .confirmed || self == .inProgress
     }
 }
 
 struct HelpRequestRecord: Codable, Identifiable, Equatable {
     let id: UUID
     let citizenId: UUID
+    let volunteerId: UUID?
     let requestType: String
     let description: String
     let urgencyLevel: String
@@ -78,10 +95,13 @@ struct HelpRequestRecord: Codable, Identifiable, Equatable {
     let longitude: Double
     let createdAt: Date
     let updatedAt: Date
+    let confirmedAt: Date?
+    let completedAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id
         case citizenId = "citizen_id"
+        case volunteerId = "volunteer_id"
         case requestType = "request_type"
         case description
         case urgencyLevel = "urgency_level"
@@ -90,6 +110,8 @@ struct HelpRequestRecord: Codable, Identifiable, Equatable {
         case longitude
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case confirmedAt = "confirmed_at"
+        case completedAt = "completed_at"
     }
 
     var requestTypeValue: HelpRequestType {

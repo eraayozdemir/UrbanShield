@@ -26,6 +26,12 @@ final class AuthSessionViewModel {
         session = .authenticated(user)
     }
 
+    func refreshCurrentUser() async {
+        if let user = try? await AuthService.shared.currentUser() {
+            session = .authenticated(user)
+        }
+    }
+
     func signOut() async {
         do {
             try await AuthService.shared.signOut()

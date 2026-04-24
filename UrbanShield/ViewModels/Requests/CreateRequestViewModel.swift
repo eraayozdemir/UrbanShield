@@ -36,13 +36,13 @@ final class CreateRequestViewModel {
             return false
         }
 
-        guard let latitudeValue = Double(latitude.trimmingCharacters(in: .whitespacesAndNewlines)),
+        guard let latitudeValue = Double(latitude.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".")),
               (-90...90).contains(latitudeValue) else {
             errorMessage = "Latitude must be a valid number between -90 and 90."
             return false
         }
 
-        guard let longitudeValue = Double(longitude.trimmingCharacters(in: .whitespacesAndNewlines)),
+        guard let longitudeValue = Double(longitude.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".")),
               (-180...180).contains(longitudeValue) else {
             errorMessage = "Longitude must be a valid number between -180 and 180."
             return false

@@ -21,6 +21,14 @@ struct CitizenHomeView: View {
             .tag(CitizenTab.home)
 
             NavigationStack {
+                NearbyRequestsView(sessionViewModel: sessionViewModel)
+            }
+            .tabItem {
+                Label(CitizenTab.nearby.title, systemImage: CitizenTab.nearby.systemImage)
+            }
+            .tag(CitizenTab.nearby)
+
+            NavigationStack {
                 MyRequestsView(sessionViewModel: sessionViewModel)
             }
             .tabItem {
@@ -42,12 +50,14 @@ struct CitizenHomeView: View {
 
 private enum CitizenTab: Hashable {
     case home
+    case nearby
     case requests
     case profile
 
     var title: String {
         switch self {
         case .home: return "Home"
+        case .nearby: return "Nearby"
         case .requests: return "Requests"
         case .profile: return "Profile"
         }
@@ -56,6 +66,7 @@ private enum CitizenTab: Hashable {
     var systemImage: String {
         switch self {
         case .home: return "shield.lefthalf.filled"
+        case .nearby: return "mappin.and.ellipse"
         case .requests: return "list.bullet.rectangle.fill"
         case .profile: return "person.crop.circle.fill"
         }
@@ -78,6 +89,18 @@ private struct CitizenDashboardView: View {
                 header
 
                 EmergencyActionPanel(sessionViewModel: sessionViewModel)
+
+                NavigationLink {
+                    NearbyRequestsView(sessionViewModel: sessionViewModel)
+                } label: {
+                    HomeActionRow(
+                        icon: "mappin.and.ellipse",
+                        title: "Nearby Requests",
+                        subtitle: "Confirm open requests around your area and become a volunteer.",
+                        tint: .green
+                    )
+                }
+                .buttonStyle(.plain)
 
                 NavigationLink {
                     MyRequestsView(sessionViewModel: sessionViewModel)

@@ -3,12 +3,14 @@
 //  UrbanShield
 //
 
+import MapKit
 import SwiftUI
 
 struct CreateRequestView: View {
     let sessionViewModel: AuthSessionViewModel
 
     @State private var viewModel = CreateRequestViewModel()
+    @State private var isShowingMapPicker = false
     @Environment(\.dismiss) private var dismiss
     @FocusState private var focusedField: Field?
 
@@ -67,7 +69,25 @@ struct CreateRequestView: View {
                 }
 
                 RequestCard {
-                    RequestSectionTitle(title: "Manual Location", systemImage: "location.fill")
+                    HStack {
+                        RequestSectionTitle(title: "Location", systemImage: "location.fill")
+                        Spacer()
+                        Button {
+                            focusedField = nil
+                            isShowingMapPicker = true
+                        } label: {
+                            Label("Pick on Map", systemImage: "map.fill")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
+                    LocationPreview(
+                        coordinate: CLLocationCoordinate2D.urbanShieldParse(
+                            latitude: viewModel.latitude,
+                            longitude: viewModel.longitude
+                        )
+                    )
 
                     VStack(spacing: 12) {
                         CoordinateField(
@@ -124,6 +144,18 @@ struct CreateRequestView: View {
         } message: {
             Text("Your help request has been created.")
         }
+        .sheet(isPresented: $isShowingMapPicker) {
+            MapCoordinatePickerView(
+                title: "Pick Request Location",
+                initialCoordinate: CLLocationCoordinate2D.urbanShieldParse(
+                    latitude: viewModel.latitude,
+                    longitude: viewModel.longitude
+                )
+            ) { coordinate in
+                viewModel.latitude = coordinate.urbanShieldLatitudeText
+                viewModel.longitude = coordinate.urbanShieldLongitudeText
+            }
+        }
     }
 
     private var header: some View {
@@ -160,6 +192,45 @@ struct CreateRequestView: View {
             )
         )
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+private struct LocationPreview: View {
+    let coordinate: CLLocationCoordinate2D?
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: coordinate == nil ? "mappin.slash.circle.fill" : "mappin.circle.fill")
+                .font(.title3)
+                .foregroundStyle(coordinate == nil ? Color.secondary : Color.red)
+                .frame(width: 40, height: 40)
+                .background((coordinate == nil ? Color.secondary : Color.red).opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(coordinate == nil ? "No map point selected" : "Map point selected")
+                    .font(.headline)
+
+                Text(coordinateText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+
+            Spacer()
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.tertiarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var coordinateText: String {
+        guard let coordinate else {
+            return "Use the map or enter coordinates manually."
+        }
+
+        return "\(coordinate.urbanShieldLatitudeText), \(coordinate.urbanShieldLongitudeText)"
     }
 }
 
