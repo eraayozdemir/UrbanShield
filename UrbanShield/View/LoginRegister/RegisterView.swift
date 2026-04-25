@@ -40,8 +40,17 @@ struct RegisterView: View {
                     .autocapitalization(.none)
                     .textFieldStyle(.roundedBorder)
 
-                SecureField("Password (min. 6 characters)", text: $viewModel.password)
+                SecureField("Password", text: $viewModel.password)
                     .textFieldStyle(.roundedBorder)
+
+                SecureField("Confirm Password", text: $viewModel.confirmPassword)
+                    .textFieldStyle(.roundedBorder)
+
+                PasswordRequirementsView(
+                    requirements: viewModel.passwordRequirements,
+                    passwordsMatch: viewModel.doPasswordsMatch,
+                    confirmPasswordIsEmpty: viewModel.confirmPassword.isEmpty
+                )
 
                 if let error = viewModel.errorMessage {
                     Text(error)
@@ -52,9 +61,7 @@ struct RegisterView: View {
 
                 Button {
                     Task {
-                        if let user = await viewModel.signUp() {
-                            sessionViewModel.setAuthenticated(user)
-                        }
+                        _ = await viewModel.signUp()
                     }
                 } label: {
                     Group {
@@ -70,7 +77,7 @@ struct RegisterView: View {
                     .frame(height: 44)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(viewModel.isLoading || viewModel.fullName.isEmpty || viewModel.email.isEmpty || viewModel.password.count < 6)
+                .disabled(!viewModel.canSubmit)
             }
 
             Spacer()
@@ -84,5 +91,64 @@ struct RegisterView: View {
         .padding(.horizontal, 24)
         .navigationTitle("Register")
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Account Created", isPresented: $viewModel.didSignUp) {
+            Button("Go to Login") {
+                dismiss()
+            }
+        } message: {
+            Text("Your account was created successfully. Please sign in with your email and password.")
+        }
+    }
+}
+
+private struct PasswordRequirementsView: View {
+    let requirements: [PasswordRequirement]
+    let passwordsMatch: Bool
+    let confirmPasswordIsEmpty: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            ForEach(requirements) { requirement in
+                RequirementRow(title: requirement.title, isMet: requirement.isMet)
+            }
+
+            RequirementRow(
+                title: "Passwords match",
+                isMet: passwordsMatch,
+                isNeutral: confirmPasswordIsEmpty
+            )
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct RequirementRow: View {
+    let title: String
+    let isMet: Bool
+    var isNeutral: Bool = false
+
+    var body: some View {
+        Label {
+            Text(title)
+                .font(.caption)
+        } icon: {
+            Image(systemName: iconName)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(iconColor)
+        }
+        .foregroundStyle(isNeutral ? Color.secondary : (isMet ? Color.green : Color.secondary))
+    }
+
+    private var iconName: String {
+        if isNeutral { return "circle" }
+        return isMet ? "checkmark.circle.fill" : "circle"
+    }
+
+    private var iconColor: Color {
+        if isNeutral { return .secondary }
+        return isMet ? .green : .secondary
     }
 }

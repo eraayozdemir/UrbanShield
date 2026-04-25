@@ -40,4 +40,9 @@ final class AuthSessionViewModel {
             errorMessage = error.localizedDescription
         }
     }
+
+    func deleteAccount() async throws {
+        try await AuthService.shared.deleteAccount()
+        session = .unauthenticated
+    }
 }

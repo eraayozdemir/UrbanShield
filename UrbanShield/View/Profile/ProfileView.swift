@@ -16,55 +16,68 @@ struct ProfileView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 18) {
-                if let user = currentUser {
-                    profileHeader(user)
+        ZStack(alignment: .topTrailing) {
+            ScrollView {
+                VStack(spacing: 18) {
+                    if let user = currentUser {
+                        profileHeader(user)
 
-                    RequestCard {
-                        RequestSectionTitle(title: "Account", systemImage: "person.text.rectangle")
+                        RequestCard {
+                            RequestSectionTitle(title: "Account", systemImage: "person.text.rectangle")
 
-                        ProfileInfoRow(title: "Full Name", value: user.fullName, systemImage: "person.fill")
-                        Divider()
-                        ProfileInfoRow(title: "Email", value: user.email, systemImage: "envelope.fill")
-                        Divider()
-                        ProfileInfoRow(title: "Role", value: user.role.rawValue.capitalized, systemImage: "key.fill")
-                    }
+                            ProfileInfoRow(title: "Full Name", value: user.fullName, systemImage: "person.fill")
+                            Divider()
+                            ProfileInfoRow(title: "Email", value: user.email, systemImage: "envelope.fill")
+                            Divider()
+                            ProfileInfoRow(title: "Role", value: user.role.rawValue.capitalized, systemImage: "key.fill")
+                        }
 
-                    RequestCard {
-                        RequestSectionTitle(title: "Security", systemImage: "lock.shield.fill")
+                        RequestCard {
+                            RequestSectionTitle(title: "Security", systemImage: "lock.shield.fill")
 
-                        ProfileInfoRow(
-                            title: "Session",
-                            value: "Authenticated",
-                            systemImage: "checkmark.seal.fill",
-                            tint: .green
+                            ProfileInfoRow(
+                                title: "Session",
+                                value: "Authenticated",
+                                systemImage: "checkmark.seal.fill",
+                                tint: .green
+                            )
+                            Divider()
+                            ProfileInfoRow(
+                                title: "Member Since",
+                                value: user.createdAt.formatted(date: .abbreviated, time: .omitted),
+                                systemImage: "calendar"
+                            )
+                        }
+                    } else {
+                        ContentUnavailableView(
+                            "No Active Profile",
+                            systemImage: "person.crop.circle.badge.exclamationmark",
+                            description: Text("Sign in again to load your profile.")
                         )
-                        Divider()
-                        ProfileInfoRow(
-                            title: "Member Since",
-                            value: user.createdAt.formatted(date: .abbreviated, time: .omitted),
-                            systemImage: "calendar"
-                        )
                     }
-
-                    Button(role: .destructive) {
-                        Task { await sessionViewModel.signOut() }
-                    } label: {
-                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: 52)
-                    }
-                    .buttonStyle(.bordered)
-                } else {
-                    ContentUnavailableView(
-                        "No Active Profile",
-                        systemImage: "person.crop.circle.badge.exclamationmark",
-                        description: Text("Sign in again to load your profile.")
-                    )
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, currentUser == nil ? 16 : 64)
+                .padding(.bottom, 16)
             }
-            .padding(16)
+
+            if let user = currentUser {
+                NavigationLink {
+                    ProfileSettingsView(sessionViewModel: sessionViewModel, user: user)
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.headline)
+                        .foregroundStyle(.blue)
+                        .frame(width: 46, height: 46)
+                        .background(RequestUI.card)
+                        .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Settings")
+                .padding(.top, 12)
+                .padding(.trailing, 16)
+            }
         }
         .background(RequestUI.background)
         .navigationTitle("Profile")

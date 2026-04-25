@@ -32,6 +32,39 @@ final class AuthService: Sendable {
         try await supabase.auth.signOut()
     }
 
+    func sendPasswordReset(email: String) async throws {
+        try await supabase.auth.resetPasswordForEmail(email)
+    }
+
+    @discardableResult
+    func updateProfile(fullName: String) async throws -> User {
+        let session = try await supabase.auth.session
+        let dto: ProfileDTO = try await supabase
+            .from("profiles")
+            .update(ProfileUpdateDTO(fullName: fullName))
+            .eq("id", value: session.user.id.uuidString)
+            .select()
+            .single()
+            .execute()
+            .value
+
+        _ = try await supabase.auth.update(
+            user: UserAttributes(data: ["full_name": .string(fullName)])
+        )
+
+        return dto.toUser()
+    }
+
+    func updatePassword(_ password: String) async throws {
+        _ = try await supabase.auth.update(user: UserAttributes(password: password))
+    }
+
+    func deleteAccount() async throws {
+        let session = try await supabase.auth.session
+        try await supabase.auth.admin.deleteUser(id: session.user.id, shouldSoftDelete: true)
+        try await signOut()
+    }
+
     /// Returns nil when no session exists (app launch / logged out).
     func currentUser() async throws -> User? {
         guard let session = try? await supabase.auth.session else { return nil }
@@ -97,6 +130,14 @@ private struct ProfileInsertDTO: Encodable {
 
     enum CodingKeys: String, CodingKey {
         case id, email, role
+        case fullName = "full_name"
+    }
+}
+
+private struct ProfileUpdateDTO: Encodable {
+    let fullName: String
+
+    enum CodingKeys: String, CodingKey {
         case fullName = "full_name"
     }
 }

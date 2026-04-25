@@ -10,6 +10,7 @@ struct LoginView: View {
 
     @State private var viewModel = LoginViewModel()
     @State private var showRegister = false
+    @State private var showForgotPassword = false
 
     var body: some View {
         NavigationStack {
@@ -40,6 +41,12 @@ struct LoginView: View {
 
                     SecureField("Password", text: $viewModel.password)
                         .textFieldStyle(.roundedBorder)
+
+                    Button("Forgot Password?") {
+                        showForgotPassword = true
+                    }
+                    .font(.footnote.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
 
                     if let error = viewModel.errorMessage {
                         Text(error)
@@ -83,6 +90,9 @@ struct LoginView: View {
             .padding(.horizontal, 24)
             .navigationDestination(isPresented: $showRegister) {
                 RegisterView(sessionViewModel: sessionViewModel)
+            }
+            .navigationDestination(isPresented: $showForgotPassword) {
+                ForgotPasswordView(email: viewModel.email)
             }
         }
     }
