@@ -76,7 +76,7 @@ struct NearbyRequestsView: View {
                                     Task {
                                         let didConfirm = await viewModel.confirmRequest(
                                             item.request,
-                                            volunteerId: currentUser?.id
+                                            volunteer: currentUser
                                         )
                                         if didConfirm {
                                             await sessionViewModel.refreshCurrentUser()
@@ -148,6 +148,10 @@ struct NearbyRequestsView: View {
                     Text("Confirm an open request to become the assigned volunteer. Confirmed tasks move to your volunteer dashboard.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+
+                    if let currentUser {
+                        VolunteerReadinessStrip(user: currentUser)
+                    }
                 }
             }
         }
@@ -198,6 +202,47 @@ private struct NearbyRequestItem: Identifiable {
     let distance: Double?
 
     var id: UUID { request.id }
+}
+
+private struct VolunteerReadinessStrip: View {
+    let user: User
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Label(user.availabilityStatus.title, systemImage: availabilityIcon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(availabilityColor)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(availabilityColor.opacity(0.12))
+                .clipShape(Capsule())
+
+            Text(user.volunteerSkills.isEmpty ? "No skills selected" : "\(user.volunteerSkills.count) skill(s)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(Color(.tertiarySystemGroupedBackground))
+                .clipShape(Capsule())
+        }
+        .padding(.top, 4)
+    }
+
+    private var availabilityIcon: String {
+        switch user.availabilityStatus {
+        case .available: return "checkmark.circle.fill"
+        case .busy: return "clock.fill"
+        case .offline: return "moon.fill"
+        }
+    }
+
+    private var availabilityColor: Color {
+        switch user.availabilityStatus {
+        case .available: return .green
+        case .busy: return .orange
+        case .offline: return .secondary
+        }
+    }
 }
 
 private struct NearbyMapPreview: View {

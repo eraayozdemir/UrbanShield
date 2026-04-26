@@ -28,70 +28,69 @@ struct MyRequestsView: View {
             RequestUI.background
                 .ignoresSafeArea()
 
-            if viewModel.isLoading && viewModel.requests.isEmpty {
-                RequestLoadingView(title: "Loading requests...")
-            } else if viewModel.requests.isEmpty {
-                emptyState
-            } else if filteredRequests.isEmpty {
-                filteredEmptyState
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 12) {
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    if viewModel.isLoading && viewModel.requests.isEmpty {
+                        RequestLoadingView(title: "Loading requests...")
+                            .frame(minHeight: 320)
+                    } else if viewModel.requests.isEmpty {
+                        emptyState
+                    } else {
                         RequestSummaryBar(requests: viewModel.requests)
                             .padding(.horizontal, horizontalPadding)
-                            .padding(.top, 8)
 
                         RequestFilterBar(selection: $selectedFilter)
                             .padding(.bottom, 4)
 
-                        ForEach(filteredRequests) { request in
-                            NavigationLink {
-                                RequestDetailView(
-                                    requestId: request.id,
-                                    sessionViewModel: sessionViewModel
-                                )
-                            } label: {
-                                RequestRowView(request: request)
+                        if filteredRequests.isEmpty {
+                            filteredEmptyState
+                        } else {
+                            ForEach(filteredRequests) { request in
+                                NavigationLink {
+                                    RequestDetailView(
+                                        requestId: request.id,
+                                        sessionViewModel: sessionViewModel
+                                    )
+                                } label: {
+                                    RequestRowView(request: request)
+                                }
+                                .buttonStyle(.plain)
+                                .padding(.horizontal, horizontalPadding)
                             }
-                            .buttonStyle(.plain)
-                            .padding(.horizontal, horizontalPadding)
                         }
                     }
-                    .padding(.bottom, 18)
                 }
-                .refreshable {
-                    await viewModel.loadRequests(citizenId: currentUser?.id)
-                }
+                .padding(.bottom, 18)
+            }
+            .refreshable {
+                await reloadRequests()
             }
         }
         .navigationTitle("My Requests")
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                NavigationLink {
-                    CreateRequestView(sessionViewModel: sessionViewModel)
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                }
-            }
-
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task {
-                        await viewModel.loadRequests(citizenId: currentUser?.id)
-                    }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .disabled(viewModel.isLoading)
-            }
-        }
         .overlay(alignment: .bottom) {
             if let error = viewModel.errorMessage {
                 RequestErrorBanner(message: error)
             }
         }
+        .overlay(alignment: .bottomTrailing) {
+            NavigationLink {
+                CreateRequestView(sessionViewModel: sessionViewModel)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 52, height: 52)
+                    .background(.blue)
+                    .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.14), radius: 10, y: 4)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Create Request")
+            .padding(.trailing, 20)
+            .padding(.bottom, 12)
+        }
         .task {
-            await viewModel.loadRequests(citizenId: currentUser?.id)
+            await reloadRequests()
         }
     }
 
@@ -102,26 +101,6 @@ struct MyRequestsView: View {
                 systemImage: "doc.text.magnifyingglass",
                 description: Text("Create your first help request and track it here.")
             )
-
-            NavigationLink {
-                CreateRequestView(sessionViewModel: sessionViewModel)
-            } label: {
-                Label("Create Request", systemImage: "plus.circle.fill")
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 50)
-            }
-            .buttonStyle(.borderedProminent)
-
-            Button {
-                Task {
-                    await viewModel.loadRequests(citizenId: currentUser?.id)
-                }
-            } label: {
-                Label("Reload", systemImage: "arrow.clockwise")
-                    .frame(minHeight: 44)
-            }
-            .buttonStyle(.bordered)
-            .disabled(viewModel.isLoading)
         }
         .padding(24)
     }
@@ -131,10 +110,8 @@ struct MyRequestsView: View {
             ContentUnavailableView(
                 "No \(selectedFilter.title) Requests",
                 systemImage: "line.3.horizontal.decrease.circle",
-                description: Text("Try a different filter or reload your requests.")
+                description: Text("Try a different filter or pull to refresh.")
             )
-
-            RequestFilterBar(selection: $selectedFilter)
 
             Button {
                 selectedFilter = .all
@@ -145,6 +122,10 @@ struct MyRequestsView: View {
             .buttonStyle(.bordered)
         }
         .padding(24)
+    }
+
+    private func reloadRequests() async {
+        await viewModel.loadRequests(citizenId: currentUser?.id)
     }
 }
 

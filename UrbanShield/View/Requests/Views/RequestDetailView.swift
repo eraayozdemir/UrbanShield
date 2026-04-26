@@ -125,6 +125,7 @@ struct RequestDetailView: View {
                                 await viewModel.startVolunteerWork(id: requestId, volunteerId: currentUser?.id)
                             } else {
                                 await viewModel.completeVolunteerWork(id: requestId, volunteerId: currentUser?.id)
+                                await sessionViewModel.refreshCurrentUser()
                             }
                         }
                     } label: {

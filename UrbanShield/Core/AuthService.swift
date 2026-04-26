@@ -13,6 +13,7 @@ import Foundation
 final class AuthService: Sendable {
 
     static let shared = AuthService()
+    static let passwordResetRedirectURL = URL(string: "urbanshield://reset-password")!
     private init() {}
 
     // MARK: - Auth
@@ -33,7 +34,14 @@ final class AuthService: Sendable {
     }
 
     func sendPasswordReset(email: String) async throws {
-        try await supabase.auth.resetPasswordForEmail(email)
+        try await supabase.auth.resetPasswordForEmail(
+            email,
+            redirectTo: Self.passwordResetRedirectURL
+        )
+    }
+
+    func handleAuthRedirect(_ url: URL) async throws {
+        _ = try await supabase.auth.session(from: url)
     }
 
     @discardableResult
@@ -51,6 +59,29 @@ final class AuthService: Sendable {
         _ = try await supabase.auth.update(
             user: UserAttributes(data: ["full_name": .string(fullName)])
         )
+
+        return dto.toUser()
+    }
+
+    @discardableResult
+    func updateVolunteerProfile(
+        availabilityStatus: VolunteerAvailability,
+        skills: [VolunteerSkill]
+    ) async throws -> User {
+        let session = try await supabase.auth.session
+        let dto: ProfileDTO = try await supabase
+            .from("profiles")
+            .update(
+                VolunteerProfileUpdateDTO(
+                    availabilityStatus: availabilityStatus.rawValue,
+                    volunteerSkills: skills.map(\.rawValue)
+                )
+            )
+            .eq("id", value: session.user.id.uuidString)
+            .select()
+            .single()
+            .execute()
+            .value
 
         return dto.toUser()
     }
@@ -103,11 +134,15 @@ private struct ProfileDTO: Codable {
     let email: String
     let fullName: String
     let role: String
+    let availabilityStatus: String?
+    let volunteerSkills: [String]?
     let createdAt: Date
 
     enum CodingKeys: String, CodingKey {
         case id, email, role
         case fullName   = "full_name"
+        case availabilityStatus = "availability_status"
+        case volunteerSkills = "volunteer_skills"
         case createdAt  = "created_at"
     }
 
@@ -117,6 +152,8 @@ private struct ProfileDTO: Codable {
             email:      email,
             fullName:   fullName,
             role:       UserRole(rawValue: role) ?? .citizen,
+            availabilityStatus: VolunteerAvailability(rawValue: availabilityStatus ?? "") ?? .available,
+            volunteerSkills: (volunteerSkills ?? []).compactMap(VolunteerSkill.init(rawValue:)),
             createdAt:  createdAt
         )
     }
@@ -139,5 +176,15 @@ private struct ProfileUpdateDTO: Encodable {
 
     enum CodingKeys: String, CodingKey {
         case fullName = "full_name"
+    }
+}
+
+private struct VolunteerProfileUpdateDTO: Encodable {
+    let availabilityStatus: String
+    let volunteerSkills: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case availabilityStatus = "availability_status"
+        case volunteerSkills = "volunteer_skills"
     }
 }

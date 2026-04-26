@@ -32,6 +32,26 @@ struct ProfileView: View {
                             ProfileInfoRow(title: "Role", value: user.role.rawValue.capitalized, systemImage: "key.fill")
                         }
 
+                        if user.role == .citizen || user.role == .volunteer {
+                            RequestCard {
+                                RequestSectionTitle(title: "Volunteer Readiness", systemImage: "hands.sparkles.fill")
+
+                                ProfileInfoRow(
+                                    title: "Availability",
+                                    value: user.availabilityStatus.title,
+                                    systemImage: availabilityIcon(for: user.availabilityStatus),
+                                    tint: availabilityColor(for: user.availabilityStatus)
+                                )
+                                Divider()
+                                ProfileInfoRow(
+                                    title: "Skills",
+                                    value: skillText(for: user),
+                                    systemImage: "star.fill",
+                                    tint: .green
+                                )
+                            }
+                        }
+
                         RequestCard {
                             RequestSectionTitle(title: "Security", systemImage: "lock.shield.fill")
 
@@ -134,6 +154,27 @@ struct ProfileView: View {
 
         let initials = String(parts).uppercased()
         return initials.isEmpty ? "US" : initials
+    }
+
+    private func skillText(for user: User) -> String {
+        let titles = user.volunteerSkills.map(\.title)
+        return titles.isEmpty ? "Not set" : titles.joined(separator: ", ")
+    }
+
+    private func availabilityIcon(for availability: VolunteerAvailability) -> String {
+        switch availability {
+        case .available: return "checkmark.circle.fill"
+        case .busy: return "clock.fill"
+        case .offline: return "moon.fill"
+        }
+    }
+
+    private func availabilityColor(for availability: VolunteerAvailability) -> Color {
+        switch availability {
+        case .available: return .green
+        case .busy: return .orange
+        case .offline: return .secondary
+        }
     }
 }
 

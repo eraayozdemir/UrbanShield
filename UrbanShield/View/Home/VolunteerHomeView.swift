@@ -76,6 +76,13 @@ private enum VolunteerTab: Hashable {
 private struct VolunteerDashboardView: View {
     let sessionViewModel: AuthSessionViewModel
 
+    private var currentUser: User? {
+        if case .authenticated(let user) = sessionViewModel.session {
+            return user
+        }
+        return nil
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -140,6 +147,19 @@ private struct VolunteerDashboardView: View {
                     Text("You became a volunteer by confirming a citizen request. You can still create and track your own citizen requests.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+
+                    if let currentUser {
+                        Label(
+                            "\(currentUser.availabilityStatus.title) • \(currentUser.volunteerSkills.count) skill(s)",
+                            systemImage: "person.crop.circle.badge.checkmark"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.green)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.green.opacity(0.12))
+                        .clipShape(Capsule())
+                    }
                 }
             }
         }

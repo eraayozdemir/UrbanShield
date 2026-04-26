@@ -29,5 +29,13 @@ struct RootView: View {
         .task {
             await sessionViewModel.restoreSession()
         }
+        .onOpenURL { url in
+            Task {
+                await sessionViewModel.handleAuthRedirect(url)
+            }
+        }
+        .sheet(isPresented: $sessionViewModel.isPasswordRecoveryFlow) {
+            PasswordRecoveryView(sessionViewModel: sessionViewModel)
+        }
     }
 }

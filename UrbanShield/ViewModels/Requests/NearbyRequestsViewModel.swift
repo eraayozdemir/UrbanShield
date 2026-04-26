@@ -43,17 +43,32 @@ final class NearbyRequestsViewModel {
         }
     }
 
-    func confirmRequest(_ request: HelpRequestRecord, volunteerId: UUID?) async -> Bool {
+    func confirmRequest(_ request: HelpRequestRecord, volunteer: User?) async -> Bool {
         errorMessage = nil
         successMessage = nil
 
-        guard let volunteerId else {
+        guard let volunteer else {
             errorMessage = "You must be signed in to confirm a request."
             return false
         }
 
-        guard request.citizenId != volunteerId else {
+        guard request.citizenId != volunteer.id else {
             errorMessage = "You cannot volunteer for your own request."
+            return false
+        }
+
+        guard volunteer.availabilityStatus == .available else {
+            errorMessage = "You must be available before accepting a request."
+            return false
+        }
+
+        guard !volunteer.volunteerSkills.isEmpty else {
+            errorMessage = "Add at least one volunteer skill in your profile before accepting requests."
+            return false
+        }
+
+        guard volunteer.volunteerSkills.contains(where: { $0.supports(request.requestTypeValue) }) else {
+            errorMessage = "Your volunteer skills do not match this request type."
             return false
         }
 
@@ -63,7 +78,7 @@ final class NearbyRequestsViewModel {
         do {
             let now = Date()
             let update = RequestVolunteerUpdate(
-                volunteerId: volunteerId,
+                volunteerId: volunteer.id,
                 status: HelpRequestStatus.confirmed.rawValue,
                 confirmedAt: now,
                 updatedAt: now
@@ -80,17 +95,32 @@ final class NearbyRequestsViewModel {
 
             try await supabase
                 .from("profiles")
-                .update(["role": UserRole.volunteer.rawValue])
-                .eq("id", value: volunteerId.uuidString)
+                .update(
+                    VolunteerAcceptanceProfileUpdate(
+                        role: UserRole.volunteer.rawValue,
+                        availabilityStatus: VolunteerAvailability.busy.rawValue
+                    )
+                )
+                .eq("id", value: volunteer.id.uuidString)
                 .execute()
 
             requests.removeAll { $0.id == request.id }
-            successMessage = "Request confirmed. It is now visible in your volunteer tasks."
+            successMessage = "Request confirmed. Your volunteer status is now busy."
             return true
         } catch {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+}
+
+private struct VolunteerAcceptanceProfileUpdate: Encodable {
+    let role: String
+    let availabilityStatus: String
+
+    enum CodingKeys: String, CodingKey {
+        case role
+        case availabilityStatus = "availability_status"
     }
 }
 

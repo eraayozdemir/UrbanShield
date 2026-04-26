@@ -126,6 +126,14 @@ final class RequestDetailViewModel {
                 .single()
                 .execute()
                 .value
+
+            if nextStatus == .completed {
+                try await supabase
+                    .from("profiles")
+                    .update(ProfileAvailabilityUpdate(availabilityStatus: VolunteerAvailability.available.rawValue))
+                    .eq("id", value: volunteerId.uuidString)
+                    .execute()
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -141,5 +149,13 @@ private struct RequestStatusUpdate: Encodable {
         case status
         case updatedAt = "updated_at"
         case completedAt = "completed_at"
+    }
+}
+
+private struct ProfileAvailabilityUpdate: Encodable {
+    let availabilityStatus: String
+
+    enum CodingKeys: String, CodingKey {
+        case availabilityStatus = "availability_status"
     }
 }
