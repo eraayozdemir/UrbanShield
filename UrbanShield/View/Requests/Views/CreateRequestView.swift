@@ -162,7 +162,7 @@ struct CreateRequestView: View {
                 ) {
                     focusedField = nil
                     Task {
-                        _ = await viewModel.submit(citizenId: currentUser?.id)
+                        _ = await viewModel.submit(currentUser: currentUser)
                     }
                 }
                 .padding(.horizontal, 16)

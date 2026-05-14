@@ -49,6 +49,10 @@ struct CoordinatorDashboardView: View {
 
                         metricsGrid
 
+                        if !viewModel.activityLogs.isEmpty {
+                            recentActivity
+                        }
+
                         filterBar
 
                         if filteredRequests.isEmpty {
@@ -64,6 +68,7 @@ struct CoordinatorDashboardView: View {
                                     CoordinatorRequestCard(
                                         request: request,
                                         eligibleVolunteers: viewModel.eligibleVolunteers(for: request),
+                                        statusTargets: viewModel.allowedStatusTargets(for: request),
                                         isUpdating: viewModel.updatingRequestId == request.id
                                     ) { priority in
                                         Task {
@@ -72,6 +77,15 @@ struct CoordinatorDashboardView: View {
                                                 priority: priority,
                                                 currentUser: currentUser
                                             )
+                                        }
+                                    } onStatusChange: { status in
+                                        Task {
+                                            await viewModel.updateStatus(
+                                                request: request,
+                                                status: status,
+                                                currentUser: currentUser
+                                            )
+                                            await sessionViewModel.refreshCurrentUser()
                                         }
                                     } onAssignVolunteer: { volunteer in
                                         Task {
@@ -122,6 +136,27 @@ struct CoordinatorDashboardView: View {
     private func reloadDashboard() async {
         await viewModel.loadRequests(currentUser: currentUser)
         await sessionViewModel.refreshCurrentUser()
+    }
+
+    private var recentActivity: some View {
+        RequestCard {
+            HStack {
+                RequestSectionTitle(title: "Recent Activity", systemImage: "clock.arrow.circlepath")
+                Spacer()
+                Text("\(viewModel.activityLogs.count)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(spacing: 0) {
+                ForEach(Array(viewModel.activityLogs.prefix(4).enumerated()), id: \.element.id) { index, log in
+                    CoordinatorActivityRow(log: log)
+                    if index < min(viewModel.activityLogs.count, 4) - 1 {
+                        Divider()
+                    }
+                }
+            }
+        }
     }
 
     private var dashboardHeader: some View {
@@ -261,8 +296,10 @@ private struct CoordinatorMetricCard: View {
 private struct CoordinatorRequestCard: View {
     let request: HelpRequestRecord
     let eligibleVolunteers: [ProfileUserRecord]
+    let statusTargets: [HelpRequestStatus]
     let isUpdating: Bool
     let onPriorityChange: (HelpRequestPriority) -> Void
+    let onStatusChange: (HelpRequestStatus) -> Void
     let onAssignVolunteer: (ProfileUserRecord) -> Void
 
     var body: some View {
@@ -308,6 +345,26 @@ private struct CoordinatorRequestCard: View {
                     .minimumScaleFactor(0.82)
 
                 Spacer()
+
+                if !statusTargets.isEmpty {
+                    Menu {
+                        ForEach(statusTargets) { status in
+                            Button {
+                                onStatusChange(status)
+                            } label: {
+                                Label(status.title, systemImage: statusIcon(for: status))
+                            }
+                        }
+                    } label: {
+                        if isUpdating {
+                            ProgressView()
+                        } else {
+                            Label("Status", systemImage: "arrow.triangle.2.circlepath")
+                                .font(.caption.weight(.semibold))
+                        }
+                    }
+                    .disabled(isUpdating)
+                }
 
                 if request.statusValue.acceptsVolunteers {
                     Menu {
@@ -362,6 +419,60 @@ private struct CoordinatorRequestCard: View {
         let latitude = request.latitude.formatted(.number.precision(.fractionLength(2...4)))
         let longitude = request.longitude.formatted(.number.precision(.fractionLength(2...4)))
         return "\(latitude), \(longitude)"
+    }
+
+    private func statusIcon(for status: HelpRequestStatus) -> String {
+        switch status {
+        case .open: return "circle"
+        case .confirmed: return "checkmark.shield.fill"
+        case .inProgress: return "figure.run"
+        case .completed: return "checkmark.circle.fill"
+        case .cancelled: return "xmark.circle.fill"
+        }
+    }
+}
+
+private struct CoordinatorActivityRow: View {
+    let log: CoordinationLogRecord
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(color)
+                .frame(width: 28, height: 28)
+                .background(color.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(log.message)
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(2)
+
+                Text("\(log.actionValue.title) • \(log.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 10)
+    }
+
+    private var icon: String {
+        switch log.actionValue {
+        case .priorityUpdated: return "flag.fill"
+        case .statusUpdated: return "arrow.triangle.2.circlepath"
+        case .volunteerAssigned: return "person.badge.plus"
+        }
+    }
+
+    private var color: Color {
+        switch log.actionValue {
+        case .priorityUpdated: return .orange
+        case .statusUpdated: return .blue
+        case .volunteerAssigned: return .green
+        }
     }
 }
 

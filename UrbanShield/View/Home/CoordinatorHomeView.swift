@@ -8,19 +8,129 @@ import SwiftUI
 struct CoordinatorHomeView: View {
     let sessionViewModel: AuthSessionViewModel
 
+    @State private var selectedTab: CoordinatorTab = .requests
+
     var body: some View {
-        NavigationStack {
-            CoordinatorDashboardView(sessionViewModel: sessionViewModel)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            Task { await sessionViewModel.signOut() }
-                        } label: {
-                            Image(systemName: "rectangle.portrait.and.arrow.right")
+        TabView(selection: $selectedTab) {
+            NavigationStack {
+                CoordinatorDashboardView(sessionViewModel: sessionViewModel)
+            }
+            .tabItem {
+                Label(CoordinatorTab.requests.title, systemImage: CoordinatorTab.requests.systemImage)
+            }
+            .tag(CoordinatorTab.requests)
+
+            NavigationStack {
+                CoordinatorMapView(sessionViewModel: sessionViewModel)
+            }
+            .tabItem {
+                Label(CoordinatorTab.map.title, systemImage: CoordinatorTab.map.systemImage)
+            }
+            .tag(CoordinatorTab.map)
+
+            NavigationStack {
+                VolunteerCoordinationView(sessionViewModel: sessionViewModel)
+            }
+            .tabItem {
+                Label(CoordinatorTab.volunteers.title, systemImage: CoordinatorTab.volunteers.systemImage)
+            }
+            .tag(CoordinatorTab.volunteers)
+
+            NavigationStack {
+                CoordinatorOperationsView(sessionViewModel: sessionViewModel)
+            }
+            .tabItem {
+                Label(CoordinatorTab.tools.title, systemImage: CoordinatorTab.tools.systemImage)
+            }
+            .tag(CoordinatorTab.tools)
+
+            NavigationStack {
+                CoordinatorSettingsView(sessionViewModel: sessionViewModel)
+            }
+            .tabItem {
+                Label(CoordinatorTab.profile.title, systemImage: CoordinatorTab.profile.systemImage)
+            }
+            .tag(CoordinatorTab.profile)
+        }
+        .tint(.orange)
+    }
+}
+
+private enum CoordinatorTab: Hashable {
+    case requests
+    case map
+    case volunteers
+    case tools
+    case profile
+
+    var title: String {
+        switch self {
+        case .requests: return "Requests"
+        case .map: return "Map"
+        case .volunteers: return "Volunteers"
+        case .tools: return "Tools"
+        case .profile: return "Profile"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .requests: return "rectangle.grid.2x2.fill"
+        case .map: return "map.fill"
+        case .volunteers: return "person.2.badge.gearshape.fill"
+        case .tools: return "cross.case.circle.fill"
+        case .profile: return "person.crop.circle.fill"
+        }
+    }
+}
+
+private struct CoordinatorSettingsView: View {
+    let sessionViewModel: AuthSessionViewModel
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                RequestCard {
+                    HStack(alignment: .top, spacing: 14) {
+                        Image(systemName: "person.crop.circle.badge.checkmark")
+                            .font(.title2)
+                            .foregroundStyle(.white)
+                            .frame(width: 50, height: 50)
+                            .background(Color.orange)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Coordinator Profile")
+                                .font(.title2.bold())
+
+                            Text("Use the request and volunteer dashboards to prioritize emergencies and coordinate active helpers.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
                         }
-                        .tint(.red)
                     }
                 }
+
+                NavigationLink {
+                    ProfileView(sessionViewModel: sessionViewModel)
+                } label: {
+                    Label("Open Profile", systemImage: "person.crop.circle.fill")
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 50)
+                }
+                .buttonStyle(.bordered)
+
+                Button(role: .destructive) {
+                    Task { await sessionViewModel.signOut() }
+                } label: {
+                    Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 50)
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(16)
         }
+        .background(RequestUI.background)
+        .navigationTitle("Coordinator")
     }
 }

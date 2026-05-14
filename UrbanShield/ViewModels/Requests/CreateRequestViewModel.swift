@@ -21,11 +21,11 @@ final class CreateRequestViewModel {
     var errorMessage: String?
     var didSubmit: Bool = false
 
-    func submit(citizenId: UUID?) async -> Bool {
+    func submit(currentUser: User?) async -> Bool {
         errorMessage = nil
         didSubmit = false
 
-        guard let citizenId else {
+        guard let currentUser else {
             errorMessage = "You must be signed in to create a request."
             return false
         }
@@ -53,7 +53,7 @@ final class CreateRequestViewModel {
 
         do {
             let payload = HelpRequestInsertPayload(
-                citizenId: citizenId,
+                citizenId: currentUser.id,
                 requestType: requestType.rawValue,
                 description: trimmedDescription,
                 urgencyLevel: urgencyLevel.rawValue,
@@ -62,13 +62,27 @@ final class CreateRequestViewModel {
                 longitude: longitudeValue
             )
 
-            let _: HelpRequestRecord = try await supabase
+            let inserted: HelpRequestRecord = try await supabase
                 .from("help_requests")
                 .insert(payload)
                 .select()
                 .single()
                 .execute()
                 .value
+
+            try? await ActivityLogger.log(
+                actor: currentUser,
+                action: .requestCreated,
+                targetType: .request,
+                targetId: inserted.id,
+                requestId: inserted.id,
+                message: "\(inserted.requestTypeValue.title) request created with \(inserted.urgencyValue.title) urgency.",
+                metadata: [
+                    "request_type": inserted.requestType,
+                    "urgency": inserted.urgencyLevel,
+                    "status": inserted.status
+                ]
+            )
 
             clearForm()
             didSubmit = true

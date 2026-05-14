@@ -155,6 +155,21 @@ final class NearbyRequestsViewModel {
                 .eq("id", value: volunteer.id.uuidString)
                 .execute()
 
+            try? await ActivityLogger.log(
+                actor: volunteer,
+                action: .requestConfirmed,
+                targetType: .request,
+                targetId: request.id,
+                requestId: request.id,
+                targetUserId: request.citizenId,
+                message: "\(volunteer.fullName) confirmed \(request.requestTypeValue.title) request.",
+                metadata: [
+                    "old_status": request.status,
+                    "new_status": HelpRequestStatus.confirmed.rawValue,
+                    "request_type": request.requestType
+                ]
+            )
+
             requests.removeAll { $0.id == request.id }
             successMessage = "Request confirmed. Your volunteer status is now busy."
             return true

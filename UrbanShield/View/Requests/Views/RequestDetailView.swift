@@ -126,9 +126,9 @@ struct RequestDetailView: View {
                     Button {
                         Task {
                             if request.statusValue == .confirmed {
-                                await viewModel.startVolunteerWork(id: requestId, volunteerId: currentUser?.id)
+                                await viewModel.startVolunteerWork(id: requestId, currentUser: currentUser)
                             } else {
-                                await viewModel.completeVolunteerWork(id: requestId, volunteerId: currentUser?.id)
+                                await viewModel.completeVolunteerWork(id: requestId, currentUser: currentUser)
                                 await sessionViewModel.refreshCurrentUser()
                             }
                         }
@@ -178,7 +178,7 @@ struct RequestDetailView: View {
         ) {
             Button("Cancel Request", role: .destructive) {
                 Task {
-                    await viewModel.cancelRequest(id: requestId, citizenId: currentUser?.id)
+                    await viewModel.cancelRequest(id: requestId, currentUser: currentUser)
                     await sessionViewModel.refreshCurrentUser()
                 }
             }

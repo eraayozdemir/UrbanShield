@@ -52,12 +52,12 @@ final class AdminUserManagementViewModel {
         errorMessage = nil
         successMessage = nil
 
-        guard currentUser?.role == .admin else {
+        guard let currentUser, currentUser.role == .admin else {
             errorMessage = "Only admins can update user roles."
             return
         }
 
-        guard user.id != currentUser?.id else {
+        guard user.id != currentUser.id else {
             errorMessage = "You cannot change your own admin role from the app."
             return
         }
@@ -78,6 +78,19 @@ final class AdminUserManagementViewModel {
             if let index = users.firstIndex(where: { $0.id == user.id }) {
                 users[index] = updatedUser
             }
+
+            try? await ActivityLogger.log(
+                actor: currentUser,
+                action: .roleUpdated,
+                targetType: .user,
+                targetId: user.id,
+                targetUserId: user.id,
+                message: "\(updatedUser.fullName) role changed from \(user.roleValue.rawValue.capitalized) to \(role.rawValue.capitalized).",
+                metadata: [
+                    "old_role": user.roleValue.rawValue,
+                    "new_role": role.rawValue
+                ]
+            )
 
             successMessage = "\(updatedUser.fullName) is now \(role.rawValue.capitalized)."
         } catch where error.isCancellation {

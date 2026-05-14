@@ -50,10 +50,10 @@ final class RequestDetailViewModel {
         }
     }
 
-    func cancelRequest(id: UUID, citizenId: UUID?) async {
+    func cancelRequest(id: UUID, currentUser: User?) async {
         errorMessage = nil
 
-        guard let citizenId else {
+        guard let currentUser else {
             errorMessage = "You must be signed in to cancel a request."
             return
         }
@@ -68,15 +68,17 @@ final class RequestDetailViewModel {
 
         do {
             let now = Date()
-            request = try await supabase
+            let previousRequest = request
+            let cancelledRequest: HelpRequestRecord = try await supabase
                 .from("help_requests")
                 .update(RequestCancellationUpdate(status: HelpRequestStatus.cancelled.rawValue, updatedAt: now))
                 .eq("id", value: id.uuidString)
-                .eq("citizen_id", value: citizenId.uuidString)
+                .eq("citizen_id", value: currentUser.id.uuidString)
                 .select()
                 .single()
                 .execute()
                 .value
+            request = cancelledRequest
 
             try? await supabase
                 .from("help_request_volunteers")
@@ -87,6 +89,19 @@ final class RequestDetailViewModel {
                     HelpRequestStatus.inProgress.rawValue
                 ])
                 .execute()
+
+            try? await ActivityLogger.log(
+                actor: currentUser,
+                action: .requestCancelled,
+                targetType: .request,
+                targetId: id,
+                requestId: id,
+                message: "\(cancelledRequest.requestTypeValue.title) request cancelled by citizen.",
+                metadata: [
+                    "old_status": previousRequest?.status ?? "",
+                    "new_status": HelpRequestStatus.cancelled.rawValue
+                ]
+            )
         } catch where error.isCancellation {
             return
         } catch {
@@ -94,20 +109,20 @@ final class RequestDetailViewModel {
         }
     }
 
-    func startVolunteerWork(id: UUID, volunteerId: UUID?) async {
+    func startVolunteerWork(id: UUID, currentUser: User?) async {
         await updateVolunteerStatus(
             id: id,
-            volunteerId: volunteerId,
+            currentUser: currentUser,
             from: .confirmed,
             to: .inProgress,
             errorText: "Only confirmed requests can be moved to in progress."
         )
     }
 
-    func completeVolunteerWork(id: UUID, volunteerId: UUID?) async {
+    func completeVolunteerWork(id: UUID, currentUser: User?) async {
         await updateVolunteerStatus(
             id: id,
-            volunteerId: volunteerId,
+            currentUser: currentUser,
             from: .inProgress,
             to: .completed,
             errorText: "Only in-progress requests can be completed."
@@ -116,14 +131,14 @@ final class RequestDetailViewModel {
 
     private func updateVolunteerStatus(
         id: UUID,
-        volunteerId: UUID?,
+        currentUser: User?,
         from currentStatus: HelpRequestStatus,
         to nextStatus: HelpRequestStatus,
         errorText: String
     ) async {
         errorMessage = nil
 
-        guard let volunteerId else {
+        guard let currentUser else {
             errorMessage = "You must be signed in to update this task."
             return
         }
@@ -137,7 +152,7 @@ final class RequestDetailViewModel {
         defer { isUpdatingStatus = false }
 
         do {
-            guard let assignment = try await loadAssignment(requestId: id, volunteerId: volunteerId),
+            guard let assignment = try await loadAssignment(requestId: id, volunteerId: currentUser.id),
                   assignment.statusValue == currentStatus else {
                 errorMessage = errorText
                 return
@@ -198,11 +213,24 @@ final class RequestDetailViewModel {
                             availabilityStatus: VolunteerAvailability.available.rawValue
                         )
                     )
-                    .eq("id", value: volunteerId.uuidString)
+                    .eq("id", value: currentUser.id.uuidString)
                     .execute()
             }
 
-            await loadRequest(id: id, currentUserId: volunteerId)
+            try? await ActivityLogger.log(
+                actor: currentUser,
+                action: nextStatus == .inProgress ? .requestStarted : .requestCompleted,
+                targetType: .request,
+                targetId: id,
+                requestId: id,
+                message: "\(request?.requestTypeValue.title ?? "Request") moved to \(nextStatus.title) by volunteer.",
+                metadata: [
+                    "old_status": currentStatus.rawValue,
+                    "new_status": nextStatus.rawValue
+                ]
+            )
+
+            await loadRequest(id: id, currentUserId: currentUser.id)
         } catch where error.isCancellation {
             return
         } catch {

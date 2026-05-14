@@ -123,6 +123,18 @@ private struct VolunteerDashboardView: View {
                     )
                 }
                 .buttonStyle(.plain)
+
+                NavigationLink {
+                    SuspiciousActivityReportView(sessionViewModel: sessionViewModel)
+                } label: {
+                    VolunteerActionRow(
+                        icon: "exclamationmark.shield.fill",
+                        title: "Report Suspicious Activity",
+                        subtitle: "Send fake request, abuse, spam, or unsafe behavior reports to admin review.",
+                        tint: .red
+                    )
+                }
+                .buttonStyle(.plain)
             }
             .padding(16)
         }

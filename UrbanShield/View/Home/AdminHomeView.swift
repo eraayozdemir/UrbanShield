@@ -25,6 +25,27 @@ struct AdminHomeView: View {
             }
 
             NavigationStack {
+                VolunteerCoordinationView(sessionViewModel: sessionViewModel)
+            }
+            .tabItem {
+                Label("Volunteers", systemImage: "person.2.badge.gearshape.fill")
+            }
+
+            NavigationStack {
+                AdminModerationView(sessionViewModel: sessionViewModel)
+            }
+            .tabItem {
+                Label("Moderation", systemImage: "shield.lefthalf.filled.badge.checkmark")
+            }
+
+            NavigationStack {
+                AdminActivityLogView(sessionViewModel: sessionViewModel)
+            }
+            .tabItem {
+                Label("Activity", systemImage: "clock.arrow.2.circlepath")
+            }
+
+            NavigationStack {
                 AdminSettingsView(sessionViewModel: sessionViewModel)
             }
             .tabItem {

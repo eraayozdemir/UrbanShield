@@ -16,7 +16,7 @@ struct ProfileView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack {
             ScrollView {
                 VStack(spacing: 18) {
                     if let user = currentUser {
@@ -77,33 +77,30 @@ struct ProfileView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, currentUser == nil ? 16 : 64)
+                .padding(.top, 16)
                 .padding(.bottom, 16)
             }
             .refreshable {
                 await sessionViewModel.refreshCurrentUser()
             }
-
-            if let user = currentUser {
-                NavigationLink {
-                    ProfileSettingsView(sessionViewModel: sessionViewModel, user: user)
-                } label: {
-                    Image(systemName: "gearshape.fill")
-                        .font(.headline)
-                        .foregroundStyle(.blue)
-                        .frame(width: 46, height: 46)
-                        .background(RequestUI.card)
-                        .clipShape(Circle())
-                        .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Settings")
-                .padding(.top, 12)
-                .padding(.trailing, 16)
-            }
         }
         .background(RequestUI.background)
         .navigationTitle("Profile")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let user = currentUser {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        ProfileSettingsView(sessionViewModel: sessionViewModel, user: user)
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.headline)
+                            .foregroundStyle(.blue)
+                    }
+                    .accessibilityLabel("Settings")
+                }
+            }
+        }
     }
 
     private func profileHeader(_ user: User) -> some View {
