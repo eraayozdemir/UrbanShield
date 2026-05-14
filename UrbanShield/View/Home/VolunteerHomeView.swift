@@ -128,6 +128,9 @@ private struct VolunteerDashboardView: View {
         }
         .background(RequestUI.background)
         .navigationTitle("Volunteer")
+        .refreshable {
+            await sessionViewModel.refreshCurrentUser()
+        }
     }
 
     private var header: some View {

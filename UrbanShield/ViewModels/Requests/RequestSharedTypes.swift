@@ -81,6 +81,10 @@ enum HelpRequestStatus: String, CaseIterable, Identifiable, Codable {
     var isActive: Bool {
         self == .open || self == .confirmed || self == .inProgress
     }
+
+    var acceptsVolunteers: Bool {
+        self == .open || self == .confirmed
+    }
 }
 
 struct HelpRequestRecord: Codable, Identifiable, Equatable {
@@ -124,5 +128,49 @@ struct HelpRequestRecord: Codable, Identifiable, Equatable {
 
     var statusValue: HelpRequestStatus {
         HelpRequestStatus(rawValue: status) ?? .open
+    }
+
+    func applyingVolunteerAssignment(_ assignment: HelpRequestVolunteerRecord) -> HelpRequestRecord {
+        HelpRequestRecord(
+            id: id,
+            citizenId: citizenId,
+            volunteerId: assignment.volunteerId,
+            requestType: requestType,
+            description: description,
+            urgencyLevel: urgencyLevel,
+            status: assignment.status,
+            latitude: latitude,
+            longitude: longitude,
+            createdAt: createdAt,
+            updatedAt: assignment.updatedAt,
+            confirmedAt: assignment.acceptedAt,
+            completedAt: assignment.completedAt
+        )
+    }
+}
+
+struct HelpRequestVolunteerRecord: Codable, Identifiable, Equatable {
+    let id: UUID
+    let requestId: UUID
+    let volunteerId: UUID
+    let status: String
+    let acceptedAt: Date
+    let startedAt: Date?
+    let completedAt: Date?
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case requestId = "request_id"
+        case volunteerId = "volunteer_id"
+        case status
+        case acceptedAt = "accepted_at"
+        case startedAt = "started_at"
+        case completedAt = "completed_at"
+        case updatedAt = "updated_at"
+    }
+
+    var statusValue: HelpRequestStatus {
+        HelpRequestStatus(rawValue: status) ?? .confirmed
     }
 }

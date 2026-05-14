@@ -80,6 +80,9 @@ struct ProfileView: View {
                 .padding(.top, currentUser == nil ? 16 : 64)
                 .padding(.bottom, 16)
             }
+            .refreshable {
+                await sessionViewModel.refreshCurrentUser()
+            }
 
             if let user = currentUser {
                 NavigationLink {

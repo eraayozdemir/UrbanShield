@@ -30,14 +30,36 @@ final class NearbyRequestsViewModel {
         defer { isLoading = false }
 
         do {
-            requests = try await supabase
+            let acceptedAssignments: [HelpRequestVolunteerRecord] = try await supabase
+                .from("help_request_volunteers")
+                .select()
+                .eq("volunteer_id", value: currentUserId.uuidString)
+                .in("status", values: [
+                    HelpRequestStatus.confirmed.rawValue,
+                    HelpRequestStatus.inProgress.rawValue
+                ])
+                .execute()
+                .value
+
+            let acceptedRequestIds = Set(acceptedAssignments.map(\.requestId))
+
+            let openRequests: [HelpRequestRecord] = try await supabase
                 .from("help_requests")
                 .select()
-                .eq("status", value: HelpRequestStatus.open.rawValue)
+                .in("status", values: [
+                    HelpRequestStatus.open.rawValue,
+                    HelpRequestStatus.confirmed.rawValue
+                ])
                 .neq("citizen_id", value: currentUserId.uuidString)
                 .order("created_at", ascending: false)
                 .execute()
                 .value
+
+            requests = openRequests.filter { request in
+                request.statusValue.acceptsVolunteers && !acceptedRequestIds.contains(request.id)
+            }
+        } catch where error.isCancellation {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -62,6 +84,11 @@ final class NearbyRequestsViewModel {
             return false
         }
 
+        guard request.statusValue.acceptsVolunteers else {
+            errorMessage = "This request is no longer accepting volunteers."
+            return false
+        }
+
         guard !volunteer.volunteerSkills.isEmpty else {
             errorMessage = "Add at least one volunteer skill in your profile before accepting requests."
             return false
@@ -77,23 +104,47 @@ final class NearbyRequestsViewModel {
 
         do {
             let now = Date()
-            let update = RequestVolunteerUpdate(
-                volunteerId: volunteer.id,
-                status: HelpRequestStatus.confirmed.rawValue,
-                confirmedAt: now,
-                updatedAt: now
-            )
-
-            _ = try await supabase
-                .from("help_requests")
-                .update(update)
-                .eq("id", value: request.id.uuidString)
-                .eq("status", value: HelpRequestStatus.open.rawValue)
+            let activeAssignments: [HelpRequestVolunteerRecord] = try await supabase
+                .from("help_request_volunteers")
                 .select()
-                .single()
+                .eq("volunteer_id", value: volunteer.id.uuidString)
+                .in("status", values: [
+                    HelpRequestStatus.confirmed.rawValue,
+                    HelpRequestStatus.inProgress.rawValue
+                ])
                 .execute()
+                .value
+
+            guard activeAssignments.isEmpty else {
+                errorMessage = "Complete your active volunteer task before accepting another request."
+                return false
+            }
 
             try await supabase
+                .from("help_request_volunteers")
+                .insert(
+                    VolunteerAssignmentInsert(
+                        requestId: request.id,
+                        volunteerId: volunteer.id,
+                        status: HelpRequestStatus.confirmed.rawValue
+                    )
+                )
+                .execute()
+
+            try? await supabase
+                .from("help_requests")
+                .update(
+                    RequestConfirmationUpdate(
+                        status: HelpRequestStatus.confirmed.rawValue,
+                        confirmedAt: now,
+                        updatedAt: now
+                    )
+                )
+                .eq("id", value: request.id.uuidString)
+                .eq("status", value: HelpRequestStatus.open.rawValue)
+                .execute()
+
+            try? await supabase
                 .from("profiles")
                 .update(
                     VolunteerAcceptanceProfileUpdate(
@@ -107,10 +158,24 @@ final class NearbyRequestsViewModel {
             requests.removeAll { $0.id == request.id }
             successMessage = "Request confirmed. Your volunteer status is now busy."
             return true
+        } catch where error.isCancellation {
+            return false
         } catch {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+}
+
+private struct VolunteerAssignmentInsert: Encodable {
+    let requestId: UUID
+    let volunteerId: UUID
+    let status: String
+
+    enum CodingKeys: String, CodingKey {
+        case requestId = "request_id"
+        case volunteerId = "volunteer_id"
+        case status
     }
 }
 
@@ -124,14 +189,12 @@ private struct VolunteerAcceptanceProfileUpdate: Encodable {
     }
 }
 
-private struct RequestVolunteerUpdate: Encodable {
-    let volunteerId: UUID
+private struct RequestConfirmationUpdate: Encodable {
     let status: String
     let confirmedAt: Date
     let updatedAt: Date
 
     enum CodingKeys: String, CodingKey {
-        case volunteerId = "volunteer_id"
         case status
         case confirmedAt = "confirmed_at"
         case updatedAt = "updated_at"

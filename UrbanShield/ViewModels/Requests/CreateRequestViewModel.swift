@@ -73,6 +73,8 @@ final class CreateRequestViewModel {
             clearForm()
             didSubmit = true
             return true
+        } catch where error.isCancellation {
+            return false
         } catch {
             errorMessage = error.localizedDescription
             return false

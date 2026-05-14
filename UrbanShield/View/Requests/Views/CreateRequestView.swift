@@ -95,7 +95,8 @@ struct CreateRequestView: View {
                             text: $viewModel.latitude,
                             focusedField: $focusedField,
                             field: .latitude,
-                            example: "41.0082"
+                            example: "41.0082",
+                            validRange: -90...90
                         )
 
                         CoordinateField(
@@ -103,7 +104,8 @@ struct CreateRequestView: View {
                             text: $viewModel.longitude,
                             focusedField: $focusedField,
                             field: .longitude,
-                            example: "28.9784"
+                            example: "28.9784",
+                            validRange: -180...180
                         )
                     }
                 }
@@ -230,7 +232,7 @@ private struct LocationPreview: View {
             return "Use the map or enter coordinates manually."
         }
 
-        return "\(coordinate.urbanShieldLatitudeText), \(coordinate.urbanShieldLongitudeText)"
+        return "Valid coordinates: \(coordinate.urbanShieldLatitudeText), \(coordinate.urbanShieldLongitudeText)"
     }
 }
 
@@ -381,21 +383,86 @@ private struct CoordinateField: View {
     var focusedField: FocusState<CreateRequestView.Field?>.Binding
     let field: CreateRequestView.Field
     let example: String
+    let validRange: ClosedRange<Double>
+
+    private var validation: CoordinateValidation {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .empty }
+
+        guard let value = Double(trimmed.replacingOccurrences(of: ",", with: ".")),
+              validRange.contains(value) else {
+            return .invalid
+        }
+
+        return .valid
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
 
-            TextField(example, text: $text)
-                .focused(focusedField, equals: field)
-                .keyboardType(.numbersAndPunctuation)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .padding(.horizontal, 12)
-                .frame(minHeight: 48)
-                .background(Color(.tertiarySystemGroupedBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            HStack(spacing: 10) {
+                TextField(example, text: $text)
+                    .focused(focusedField, equals: field)
+                    .keyboardType(.numbersAndPunctuation)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .monospacedDigit()
+
+                if validation != .empty {
+                    Image(systemName: validation.systemImage)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(validation.color)
+                        .accessibilityLabel(validation.accessibilityLabel)
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(minHeight: 48)
+            .background(Color(.tertiarySystemGroupedBackground))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(validation.borderColor, lineWidth: validation == .empty ? 0 : 1.3)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+    }
+}
+
+private enum CoordinateValidation: Equatable {
+    case empty
+    case valid
+    case invalid
+
+    var systemImage: String {
+        switch self {
+        case .empty: return ""
+        case .valid: return "checkmark.circle.fill"
+        case .invalid: return "xmark.circle.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .empty: return .secondary
+        case .valid: return .green
+        case .invalid: return .red
+        }
+    }
+
+    var borderColor: Color {
+        switch self {
+        case .empty: return .clear
+        case .valid: return .green.opacity(0.65)
+        case .invalid: return .red.opacity(0.65)
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .empty: return ""
+        case .valid: return "Valid coordinate"
+        case .invalid: return "Invalid coordinate"
         }
     }
 }

@@ -83,6 +83,9 @@ struct RequestDetailView: View {
                     .padding(16)
                     .padding(.bottom, bottomActionPadding(for: request))
                 }
+                .refreshable {
+                    await reloadRequest()
+                }
             } else {
                 ContentUnavailableView(
                     "Request Not Found",
@@ -154,7 +157,7 @@ struct RequestDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     Task {
-                        await viewModel.loadRequest(id: requestId)
+                        await reloadRequest()
                     }
                 } label: {
                     Image(systemName: "arrow.clockwise")
@@ -175,6 +178,7 @@ struct RequestDetailView: View {
             Button("Cancel Request", role: .destructive) {
                 Task {
                     await viewModel.cancelRequest(id: requestId, citizenId: currentUser?.id)
+                    await sessionViewModel.refreshCurrentUser()
                 }
             }
             Button("Keep Request", role: .cancel) {}
@@ -182,8 +186,13 @@ struct RequestDetailView: View {
             Text("This will mark your request as cancelled.")
         }
         .task {
-            await viewModel.loadRequest(id: requestId)
+            await reloadRequest()
         }
+    }
+
+    private func reloadRequest() async {
+        await viewModel.loadRequest(id: requestId, currentUserId: currentUser?.id)
+        await sessionViewModel.refreshCurrentUser()
     }
 
     private func detailHeader(_ request: HelpRequestRecord) -> some View {

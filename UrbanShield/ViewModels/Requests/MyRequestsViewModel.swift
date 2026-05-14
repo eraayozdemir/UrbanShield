@@ -35,6 +35,8 @@ final class MyRequestsViewModel {
                 .order("created_at", ascending: false)
                 .execute()
                 .value
+        } catch where error.isCancellation {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

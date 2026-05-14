@@ -17,19 +17,34 @@ final class RequestDetailViewModel {
     var isUpdatingStatus: Bool = false
     var errorMessage: String?
 
-    func loadRequest(id: UUID) async {
+    func loadRequest(id: UUID, currentUserId: UUID? = nil) async {
         errorMessage = nil
         isLoading = true
         defer { isLoading = false }
 
         do {
-            request = try await supabase
+            let loadedRequests: [HelpRequestRecord] = try await supabase
                 .from("help_requests")
                 .select()
                 .eq("id", value: id.uuidString)
-                .single()
+                .limit(1)
                 .execute()
                 .value
+
+            guard let loadedRequest = loadedRequests.first else {
+                request = nil
+                return
+            }
+
+            if let currentUserId,
+               loadedRequest.citizenId != currentUserId,
+               let assignment = try await loadAssignment(requestId: id, volunteerId: currentUserId) {
+                request = loadedRequest.applyingVolunteerAssignment(assignment)
+            } else {
+                request = loadedRequest
+            }
+        } catch where error.isCancellation {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -52,15 +67,28 @@ final class RequestDetailViewModel {
         defer { isCancelling = false }
 
         do {
+            let now = Date()
             request = try await supabase
                 .from("help_requests")
-                .update(["status": HelpRequestStatus.cancelled.rawValue])
+                .update(RequestCancellationUpdate(status: HelpRequestStatus.cancelled.rawValue, updatedAt: now))
                 .eq("id", value: id.uuidString)
                 .eq("citizen_id", value: citizenId.uuidString)
                 .select()
                 .single()
                 .execute()
                 .value
+
+            try? await supabase
+                .from("help_request_volunteers")
+                .update(VolunteerAssignmentCancellationUpdate(status: HelpRequestStatus.cancelled.rawValue, updatedAt: now))
+                .eq("request_id", value: id.uuidString)
+                .in("status", values: [
+                    HelpRequestStatus.confirmed.rawValue,
+                    HelpRequestStatus.inProgress.rawValue
+                ])
+                .execute()
+        } catch where error.isCancellation {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -109,6 +137,12 @@ final class RequestDetailViewModel {
         defer { isUpdatingStatus = false }
 
         do {
+            guard let assignment = try await loadAssignment(requestId: id, volunteerId: volunteerId),
+                  assignment.statusValue == currentStatus else {
+                errorMessage = errorText
+                return
+            }
+
             let now = Date()
             let update = RequestStatusUpdate(
                 status: nextStatus.rawValue,
@@ -116,27 +150,92 @@ final class RequestDetailViewModel {
                 completedAt: nextStatus == .completed ? now : nil
             )
 
-            request = try await supabase
+            if nextStatus == .inProgress {
+                try await supabase
+                    .from("help_request_volunteers")
+                    .update(
+                        VolunteerAssignmentStartUpdate(
+                            status: nextStatus.rawValue,
+                            startedAt: now,
+                            updatedAt: now
+                        )
+                    )
+                    .eq("id", value: assignment.id.uuidString)
+                    .eq("status", value: currentStatus.rawValue)
+                    .execute()
+            } else {
+                try await supabase
+                    .from("help_request_volunteers")
+                    .update(
+                        VolunteerAssignmentCompletionUpdate(
+                            status: nextStatus.rawValue,
+                            completedAt: now,
+                            updatedAt: now
+                        )
+                    )
+                    .eq("id", value: assignment.id.uuidString)
+                    .eq("status", value: currentStatus.rawValue)
+                    .execute()
+            }
+
+            try? await supabase
                 .from("help_requests")
                 .update(update)
                 .eq("id", value: id.uuidString)
-                .eq("volunteer_id", value: volunteerId.uuidString)
-                .eq("status", value: currentStatus.rawValue)
-                .select()
-                .single()
+                .in("status", values: [
+                    HelpRequestStatus.open.rawValue,
+                    HelpRequestStatus.confirmed.rawValue,
+                    HelpRequestStatus.inProgress.rawValue
+                ])
                 .execute()
-                .value
 
             if nextStatus == .completed {
-                try await supabase
+                try? await supabase
                     .from("profiles")
-                    .update(ProfileAvailabilityUpdate(availabilityStatus: VolunteerAvailability.available.rawValue))
+                    .update(
+                        CompletedVolunteerProfileUpdate(
+                            role: UserRole.citizen.rawValue,
+                            availabilityStatus: VolunteerAvailability.available.rawValue
+                        )
+                    )
                     .eq("id", value: volunteerId.uuidString)
                     .execute()
             }
+
+            await loadRequest(id: id, currentUserId: volunteerId)
+        } catch where error.isCancellation {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func loadAssignment(requestId: UUID, volunteerId: UUID) async throws -> HelpRequestVolunteerRecord? {
+        let assignments: [HelpRequestVolunteerRecord] = try await supabase
+            .from("help_request_volunteers")
+            .select()
+            .eq("request_id", value: requestId.uuidString)
+            .eq("volunteer_id", value: volunteerId.uuidString)
+            .in("status", values: [
+                HelpRequestStatus.confirmed.rawValue,
+                HelpRequestStatus.inProgress.rawValue,
+                HelpRequestStatus.completed.rawValue
+            ])
+            .order("updated_at", ascending: false)
+            .execute()
+            .value
+
+        return assignments.first
+    }
+}
+
+private struct RequestCancellationUpdate: Encodable {
+    let status: String
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case updatedAt = "updated_at"
     }
 }
 
@@ -152,10 +251,46 @@ private struct RequestStatusUpdate: Encodable {
     }
 }
 
-private struct ProfileAvailabilityUpdate: Encodable {
+private struct VolunteerAssignmentCancellationUpdate: Encodable {
+    let status: String
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case updatedAt = "updated_at"
+    }
+}
+
+private struct VolunteerAssignmentStartUpdate: Encodable {
+    let status: String
+    let startedAt: Date
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case startedAt = "started_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+private struct VolunteerAssignmentCompletionUpdate: Encodable {
+    let status: String
+    let completedAt: Date
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case completedAt = "completed_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+private struct CompletedVolunteerProfileUpdate: Encodable {
+    let role: String
     let availabilityStatus: String
 
     enum CodingKeys: String, CodingKey {
+        case role
         case availabilityStatus = "availability_status"
     }
 }

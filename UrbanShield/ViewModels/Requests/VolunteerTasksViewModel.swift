@@ -28,8 +28,8 @@ final class VolunteerTasksViewModel {
         defer { isLoading = false }
 
         do {
-            tasks = try await supabase
-                .from("help_requests")
+            let assignments: [HelpRequestVolunteerRecord] = try await supabase
+                .from("help_request_volunteers")
                 .select()
                 .eq("volunteer_id", value: volunteerId.uuidString)
                 .in("status", values: [
@@ -40,6 +40,26 @@ final class VolunteerTasksViewModel {
                 .order("updated_at", ascending: false)
                 .execute()
                 .value
+
+            let requestIds = assignments.map { $0.requestId.uuidString }
+            guard !requestIds.isEmpty else {
+                tasks = []
+                return
+            }
+
+            let requests: [HelpRequestRecord] = try await supabase
+                .from("help_requests")
+                .select()
+                .in("id", values: requestIds)
+                .execute()
+                .value
+
+            let requestsById = Dictionary(uniqueKeysWithValues: requests.map { ($0.id, $0) })
+            tasks = assignments.compactMap { assignment in
+                requestsById[assignment.requestId]?.applyingVolunteerAssignment(assignment)
+            }
+        } catch where error.isCancellation {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

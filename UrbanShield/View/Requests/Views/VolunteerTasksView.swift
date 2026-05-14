@@ -24,31 +24,34 @@ struct VolunteerTasksView: View {
 
             if viewModel.isLoading && viewModel.tasks.isEmpty {
                 VolunteerLoadingView(title: "Loading volunteer tasks...")
-            } else if viewModel.tasks.isEmpty {
-                emptyState
             } else {
                 ScrollView {
                     LazyVStack(spacing: 14) {
-                        volunteerHeader
-                            .padding(.top, 8)
+                        if viewModel.tasks.isEmpty {
+                            emptyState
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            volunteerHeader
+                                .padding(.top, 8)
 
-                        ForEach(viewModel.tasks) { task in
-                            NavigationLink {
-                                RequestDetailView(
-                                    requestId: task.id,
-                                    sessionViewModel: sessionViewModel
-                                )
-                            } label: {
-                                VolunteerTaskCard(task: task)
+                            ForEach(viewModel.tasks) { task in
+                                NavigationLink {
+                                    RequestDetailView(
+                                        requestId: task.id,
+                                        sessionViewModel: sessionViewModel
+                                    )
+                                } label: {
+                                    VolunteerTaskCard(task: task)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                     .padding(16)
                     .padding(.bottom, 18)
                 }
                 .refreshable {
-                    await viewModel.loadTasks(volunteerId: currentUser?.id)
+                    await reloadTasks()
                 }
             }
         }
@@ -57,7 +60,7 @@ struct VolunteerTasksView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     Task {
-                        await viewModel.loadTasks(volunteerId: currentUser?.id)
+                        await reloadTasks()
                     }
                 } label: {
                     Image(systemName: "arrow.clockwise")
@@ -71,8 +74,13 @@ struct VolunteerTasksView: View {
             }
         }
         .task {
-            await viewModel.loadTasks(volunteerId: currentUser?.id)
+            await reloadTasks()
         }
+    }
+
+    private func reloadTasks() async {
+        await viewModel.loadTasks(volunteerId: currentUser?.id)
+        await sessionViewModel.refreshCurrentUser()
     }
 
     private var volunteerHeader: some View {

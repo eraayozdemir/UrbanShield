@@ -130,6 +130,9 @@ private struct CitizenDashboardView: View {
         }
         .background(RequestUI.background)
         .navigationTitle("UrbanShield")
+        .refreshable {
+            await sessionViewModel.refreshCurrentUser()
+        }
     }
 
     private var header: some View {
