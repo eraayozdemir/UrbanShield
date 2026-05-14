@@ -3,6 +3,7 @@
 //  UrbanShield
 //
 
+import Combine
 import MapKit
 import SwiftUI
 
@@ -10,7 +11,9 @@ struct CreateRequestView: View {
     let sessionViewModel: AuthSessionViewModel
 
     @State private var viewModel = CreateRequestViewModel()
+    @StateObject private var locationService = DeviceLocationService()
     @State private var isShowingMapPicker = false
+    @State private var shouldOverwriteWithCurrentLocation = false
     @Environment(\.dismiss) private var dismiss
     @FocusState private var focusedField: Field?
 
@@ -74,6 +77,21 @@ struct CreateRequestView: View {
                         Spacer()
                         Button {
                             focusedField = nil
+                            shouldOverwriteWithCurrentLocation = true
+                            locationService.requestCurrentLocation()
+                        } label: {
+                            if locationService.isRequestingLocation {
+                                ProgressView()
+                            } else {
+                                Label("Use Current", systemImage: "location.viewfinder")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(locationService.isRequestingLocation)
+
+                        Button {
+                            focusedField = nil
                             isShowingMapPicker = true
                         } label: {
                             Label("Pick on Map", systemImage: "map.fill")
@@ -106,6 +124,20 @@ struct CreateRequestView: View {
                             field: .longitude,
                             example: "28.9784",
                             validRange: -180...180
+                        )
+                    }
+
+                    if let locationError = locationService.errorMessage {
+                        LocationInlineMessage(
+                            message: locationError,
+                            color: .orange,
+                            systemImage: "location.slash.fill"
+                        )
+                    } else if locationService.coordinate != nil {
+                        LocationInlineMessage(
+                            message: "Current location is available. You can still adjust the coordinates manually.",
+                            color: .green,
+                            systemImage: "checkmark.location.fill"
                         )
                     }
                 }
@@ -146,6 +178,15 @@ struct CreateRequestView: View {
         } message: {
             Text("Your help request has been created.")
         }
+        .task {
+            if viewModel.latitude.isEmpty && viewModel.longitude.isEmpty {
+                locationService.requestCurrentLocation()
+            }
+        }
+        .onReceive(locationService.$coordinate.compactMap { $0 }) { coordinate in
+            applyCurrentLocation(coordinate, overwritingManualInput: shouldOverwriteWithCurrentLocation)
+            shouldOverwriteWithCurrentLocation = false
+        }
         .sheet(isPresented: $isShowingMapPicker) {
             MapCoordinatePickerView(
                 title: "Pick Request Location",
@@ -158,6 +199,17 @@ struct CreateRequestView: View {
                 viewModel.longitude = coordinate.urbanShieldLongitudeText
             }
         }
+    }
+
+    private func applyCurrentLocation(
+        _ coordinate: CLLocationCoordinate2D,
+        overwritingManualInput: Bool
+    ) {
+        let shouldApply = overwritingManualInput || (viewModel.latitude.isEmpty && viewModel.longitude.isEmpty)
+        guard shouldApply else { return }
+
+        viewModel.latitude = coordinate.urbanShieldLatitudeText
+        viewModel.longitude = coordinate.urbanShieldLongitudeText
     }
 
     private var header: some View {
@@ -194,6 +246,22 @@ struct CreateRequestView: View {
             )
         )
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+private struct LocationInlineMessage: View {
+    let message: String
+    let color: Color
+    let systemImage: String
+
+    var body: some View {
+        Label(message, systemImage: systemImage)
+            .font(.caption)
+            .foregroundStyle(color)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(color.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 

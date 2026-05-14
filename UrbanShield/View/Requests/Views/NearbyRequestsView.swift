@@ -3,6 +3,7 @@
 //  UrbanShield
 //
 
+import Combine
 import MapKit
 import SwiftUI
 
@@ -10,10 +11,12 @@ struct NearbyRequestsView: View {
     let sessionViewModel: AuthSessionViewModel
 
     @State private var viewModel = NearbyRequestsViewModel()
+    @StateObject private var locationService = DeviceLocationService()
     @State private var latitudeText = ""
     @State private var longitudeText = ""
     @State private var radiusText = "10"
     @State private var isShowingMapPicker = false
+    @State private var shouldOverwriteWithCurrentLocation = false
 
     private var currentUser: User? {
         if case .authenticated(let user) = sessionViewModel.session {
@@ -116,6 +119,13 @@ struct NearbyRequestsView: View {
         }
         .task {
             await viewModel.loadOpenRequests(currentUserId: currentUser?.id)
+            if latitudeText.isEmpty && longitudeText.isEmpty {
+                locationService.requestCurrentLocation()
+            }
+        }
+        .onReceive(locationService.$coordinate.compactMap { $0 }) { coordinate in
+            applyCurrentLocation(coordinate, overwritingManualInput: shouldOverwriteWithCurrentLocation)
+            shouldOverwriteWithCurrentLocation = false
         }
         .sheet(isPresented: $isShowingMapPicker) {
             MapCoordinatePickerView(
@@ -129,6 +139,17 @@ struct NearbyRequestsView: View {
                 longitudeText = coordinate.urbanShieldLongitudeText
             }
         }
+    }
+
+    private func applyCurrentLocation(
+        _ coordinate: CLLocationCoordinate2D,
+        overwritingManualInput: Bool
+    ) {
+        let shouldApply = overwritingManualInput || (latitudeText.isEmpty && longitudeText.isEmpty)
+        guard shouldApply else { return }
+
+        latitudeText = coordinate.urbanShieldLatitudeText
+        longitudeText = coordinate.urbanShieldLongitudeText
     }
 
     private var header: some View {
@@ -163,6 +184,20 @@ struct NearbyRequestsView: View {
                 RequestSectionTitle(title: "Area Filter", systemImage: "location.viewfinder")
                 Spacer()
                 Button {
+                    shouldOverwriteWithCurrentLocation = true
+                    locationService.requestCurrentLocation()
+                } label: {
+                    if locationService.isRequestingLocation {
+                        ProgressView()
+                    } else {
+                        Label("Use Current", systemImage: "location.fill.viewfinder")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(locationService.isRequestingLocation)
+
+                Button {
                     isShowingMapPicker = true
                 } label: {
                     Label("Pick Center", systemImage: "map.fill")
@@ -171,11 +206,12 @@ struct NearbyRequestsView: View {
                 .buttonStyle(.bordered)
             }
 
-            NearbyMapPreview(
-                coordinate: CLLocationCoordinate2D.urbanShieldParse(
+            NearbyRequestsMap(
+                centerCoordinate: CLLocationCoordinate2D.urbanShieldParse(
                     latitude: latitudeText,
                     longitude: longitudeText
                 ),
+                items: filteredRequests,
                 visibleCount: filteredRequests.count
             )
 
@@ -183,6 +219,20 @@ struct NearbyRequestsView: View {
                 RequestSmallTextField(title: "Latitude", text: $latitudeText)
                 RequestSmallTextField(title: "Longitude", text: $longitudeText)
                 RequestSmallTextField(title: "KM", text: $radiusText)
+            }
+
+            if let locationError = locationService.errorMessage {
+                NearbyLocationMessage(
+                    message: locationError,
+                    color: .orange,
+                    systemImage: "location.slash.fill"
+                )
+            } else if locationService.coordinate != nil {
+                NearbyLocationMessage(
+                    message: "Using current location as the search center. You can still adjust it manually.",
+                    color: .green,
+                    systemImage: "checkmark.location.fill"
+                )
             }
         }
     }
@@ -245,43 +295,126 @@ private struct VolunteerReadinessStrip: View {
     }
 }
 
-private struct NearbyMapPreview: View {
-    let coordinate: CLLocationCoordinate2D?
+private struct NearbyRequestsMap: View {
+    let centerCoordinate: CLLocationCoordinate2D?
+    let items: [NearbyRequestItem]
     let visibleCount: Int
 
+    @State private var cameraPosition: MapCameraPosition
+
+    init(
+        centerCoordinate: CLLocationCoordinate2D?,
+        items: [NearbyRequestItem],
+        visibleCount: Int
+    ) {
+        self.centerCoordinate = centerCoordinate
+        self.items = items
+        self.visibleCount = visibleCount
+        _cameraPosition = State(
+            initialValue: .region(Self.region(for: centerCoordinate, items: items))
+        )
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: coordinate == nil ? "location.magnifyingglass" : "scope")
-                .font(.title3)
-                .foregroundStyle(coordinate == nil ? Color.secondary : Color.green)
-                .frame(width: 40, height: 40)
-                .background((coordinate == nil ? Color.secondary : Color.green).opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        VStack(alignment: .leading, spacing: 10) {
+            Map(position: $cameraPosition) {
+                if let centerCoordinate {
+                    Marker("Your search center", systemImage: "location.fill", coordinate: centerCoordinate)
+                        .tint(.green)
+                }
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(coordinate == nil ? "Showing all open requests" : "\(visibleCount) request(s) in this area")
-                    .font(.headline)
+                ForEach(items) { item in
+                    Marker(
+                        item.request.requestTypeValue.title,
+                        systemImage: RequestUI.requestIcon(item.request.requestTypeValue),
+                        coordinate: item.request.coordinate
+                    )
+                    .tint(RequestUI.urgencyColor(item.request.urgencyValue))
+                }
+            }
+            .mapControls {
+                MapCompass()
+                MapScaleView()
+            }
+            .frame(height: 220)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(alignment: .topLeading) {
+                Text(centerCoordinate == nil ? "All open request pins" : "\(visibleCount) nearby pin(s)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.regularMaterial)
+                    .clipShape(Capsule())
+                    .padding(10)
+            }
 
-                Text(coordinateText)
+            HStack(spacing: 8) {
+                Label(coordinateText, systemImage: centerCoordinate == nil ? "location.magnifyingglass" : "scope")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
-            }
 
-            Spacer()
+                Spacer()
+            }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.tertiarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .onChange(of: cameraKey) {
+            cameraPosition = .region(Self.region(for: centerCoordinate, items: items))
+        }
     }
 
     private var coordinateText: String {
-        guard let coordinate else {
+        guard let centerCoordinate else {
             return "Pick a center on the map or enter coordinates manually."
         }
 
-        return "\(coordinate.urbanShieldLatitudeText), \(coordinate.urbanShieldLongitudeText)"
+        return "\(centerCoordinate.urbanShieldLatitudeText), \(centerCoordinate.urbanShieldLongitudeText)"
+    }
+
+    private var cameraKey: String {
+        let centerKey = centerCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? "none"
+        let itemKey = items.map { $0.id.uuidString }.joined(separator: ",")
+        return "\(centerKey)-\(itemKey)"
+    }
+
+    private static func region(
+        for centerCoordinate: CLLocationCoordinate2D?,
+        items: [NearbyRequestItem]
+    ) -> MKCoordinateRegion {
+        if let centerCoordinate {
+            return MKCoordinateRegion(
+                center: centerCoordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+            )
+        }
+
+        if let firstRequest = items.first?.request {
+            return MKCoordinateRegion(
+                center: firstRequest.coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.14, longitudeDelta: 0.14)
+            )
+        }
+
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 41.0082, longitude: 28.9784),
+            span: MKCoordinateSpan(latitudeDelta: 0.18, longitudeDelta: 0.18)
+        )
+    }
+}
+
+private struct NearbyLocationMessage: View {
+    let message: String
+    let color: Color
+    let systemImage: String
+
+    var body: some View {
+        Label(message, systemImage: systemImage)
+            .font(.caption)
+            .foregroundStyle(color)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(color.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
@@ -411,6 +544,10 @@ private struct NearbyLoadingView: View {
 }
 
 private extension HelpRequestRecord {
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
+
     func distanceInKilometers(fromLatitude latitude: Double, longitude: Double) -> Double {
         let earthRadius = 6_371.0
         let lat1 = self.latitude * .pi / 180
