@@ -28,6 +28,15 @@ enum RequestUI {
         }
     }
 
+    static func priorityColor(_ priority: HelpRequestPriority) -> Color {
+        switch priority {
+        case .low: return .green
+        case .medium: return .blue
+        case .high: return .orange
+        case .critical: return .red
+        }
+    }
+
     static func requestIcon(_ type: HelpRequestType) -> String {
         switch type {
         case .earthquake: return "waveform.path.ecg.rectangle"
@@ -93,6 +102,20 @@ struct RequestUrgencyChip: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(RequestUI.urgencyColor(urgency).opacity(0.12))
+            .clipShape(Capsule())
+    }
+}
+
+struct RequestPriorityChip: View {
+    let priority: HelpRequestPriority
+
+    var body: some View {
+        Label(priority.title, systemImage: "flag.fill")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(RequestUI.priorityColor(priority))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(RequestUI.priorityColor(priority).opacity(0.12))
             .clipShape(Capsule())
     }
 }

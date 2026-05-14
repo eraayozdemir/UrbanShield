@@ -45,6 +45,33 @@ enum HelpRequestUrgency: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum HelpRequestPriority: String, CaseIterable, Identifiable, Codable {
+    case low
+    case medium
+    case high
+    case critical
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .low: return "Low"
+        case .medium: return "Medium"
+        case .high: return "High"
+        case .critical: return "Critical"
+        }
+    }
+
+    var sortRank: Int {
+        switch self {
+        case .critical: return 4
+        case .high: return 3
+        case .medium: return 2
+        case .low: return 1
+        }
+    }
+}
+
 enum HelpRequestStatus: String, CaseIterable, Identifiable, Codable {
     case open
     case confirmed
@@ -94,6 +121,7 @@ struct HelpRequestRecord: Codable, Identifiable, Equatable {
     let requestType: String
     let description: String
     let urgencyLevel: String
+    let priorityLevel: String?
     let status: String
     let latitude: Double
     let longitude: Double
@@ -109,6 +137,7 @@ struct HelpRequestRecord: Codable, Identifiable, Equatable {
         case requestType = "request_type"
         case description
         case urgencyLevel = "urgency_level"
+        case priorityLevel = "priority_level"
         case status
         case latitude
         case longitude
@@ -126,6 +155,12 @@ struct HelpRequestRecord: Codable, Identifiable, Equatable {
         HelpRequestUrgency(rawValue: urgencyLevel) ?? .medium
     }
 
+    var priorityValue: HelpRequestPriority {
+        HelpRequestPriority(rawValue: priorityLevel ?? "")
+            ?? HelpRequestPriority(rawValue: urgencyLevel)
+            ?? .medium
+    }
+
     var statusValue: HelpRequestStatus {
         HelpRequestStatus(rawValue: status) ?? .open
     }
@@ -138,6 +173,7 @@ struct HelpRequestRecord: Codable, Identifiable, Equatable {
             requestType: requestType,
             description: description,
             urgencyLevel: urgencyLevel,
+            priorityLevel: priorityLevel,
             status: assignment.status,
             latitude: latitude,
             longitude: longitude,

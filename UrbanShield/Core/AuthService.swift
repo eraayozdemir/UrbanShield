@@ -24,9 +24,8 @@ final class AuthService: Sendable {
     }
 
     func signIn(email: String, password: String) async throws -> User {
-        _ = try await supabase.auth.signIn(email: email, password: password)
-        guard let user = try await currentUser() else { throw AppError.profileNotFound }
-        return user
+        let response = try await supabase.auth.signIn(email: email, password: password)
+        return try await fetchProfile(userId: response.user.id)
     }
 
     func signOut() async throws {

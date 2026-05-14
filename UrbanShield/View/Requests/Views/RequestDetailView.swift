@@ -36,6 +36,7 @@ struct RequestDetailView: View {
 
                             HStack(spacing: 10) {
                                 RequestStatusChip(status: request.statusValue)
+                                RequestPriorityChip(priority: request.priorityValue)
                                 RequestUrgencyChip(urgency: request.urgencyValue)
                             }
 
