@@ -37,5 +37,6 @@ struct RootView: View {
         .sheet(isPresented: $sessionViewModel.isPasswordRecoveryFlow) {
             PasswordRecoveryView(sessionViewModel: sessionViewModel)
         }
+        .dismissKeyboardOnTap()
     }
 }
