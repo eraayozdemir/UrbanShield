@@ -448,6 +448,7 @@ private struct ActivityLogCard: View {
     private var icon: String {
         switch log.actionValue {
         case .requestCreated: return "plus.circle.fill"
+        case .requestUpdated: return "square.and.pencil"
         case .requestCancelled: return "xmark.circle.fill"
         case .requestConfirmed: return "checkmark.shield.fill"
         case .requestStarted: return "play.circle.fill"
@@ -460,13 +461,14 @@ private struct ActivityLogCard: View {
         case .suspiciousReportSubmitted: return "flag.fill"
         case .suspiciousReportReviewed: return "shield.lefthalf.filled.badge.checkmark"
         case .roleUpdated: return "person.badge.key.fill"
+        case .evidenceUploaded: return "photo.badge.plus.fill"
         case nil: return "clock.fill"
         }
     }
 
     private var color: Color {
         switch log.actionValue {
-        case .requestCreated, .requestConfirmed, .requestStarted: return .blue
+        case .requestCreated, .requestUpdated, .requestConfirmed, .requestStarted: return .blue
         case .requestCompleted: return .green
         case .requestCancelled: return .red
         case .requestStatusUpdated, .requestPriorityUpdated: return .orange
@@ -475,6 +477,7 @@ private struct ActivityLogCard: View {
         case .announcementPublished: return .purple
         case .suspiciousReportSubmitted, .suspiciousReportReviewed: return .red
         case .roleUpdated: return .indigo
+        case .evidenceUploaded: return .cyan
         case nil: return .gray
         }
     }

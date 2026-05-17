@@ -3,6 +3,7 @@
 //  UrbanShield
 //
 
+import PhotosUI
 import SwiftUI
 
 struct RequestDetailView: View {
@@ -11,6 +12,8 @@ struct RequestDetailView: View {
 
     @State private var viewModel = RequestDetailViewModel()
     @State private var showCancelConfirmation = false
+    @State private var showEditSheet = false
+    @State private var selectedEvidenceItem: PhotosPickerItem?
 
     private var currentUser: User? {
         if case .authenticated(let user) = sessionViewModel.session {
@@ -51,6 +54,8 @@ struct RequestDetailView: View {
                                 .foregroundStyle(.primary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+
+                        evidenceSection(request)
 
                         RequestCard {
                             RequestSectionTitle(title: "Location", systemImage: "location.fill")
@@ -98,8 +103,20 @@ struct RequestDetailView: View {
         .navigationTitle("Request Detail")
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
-            if let request = viewModel.request, shouldShowCitizenCancel(for: request) {
+            if let request = viewModel.request, shouldShowCitizenControls(for: request) {
                 VStack(spacing: 10) {
+                    Button {
+                        viewModel.prepareEditForm()
+                        showEditSheet = true
+                    } label: {
+                        Label("Update Request", systemImage: "square.and.pencil")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: 50)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(viewModel.isSavingUpdate || viewModel.isCancelling)
+
                     Button(role: .destructive) {
                         showCancelConfirmation = true
                     } label: {
@@ -116,10 +133,10 @@ struct RequestDetailView: View {
                         .frame(minHeight: 52)
                     }
                     .buttonStyle(.bordered)
-                    .disabled(viewModel.isCancelling)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
+                    .disabled(viewModel.isCancelling || viewModel.isSavingUpdate)
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
                 .background(.regularMaterial)
             } else if let request = viewModel.request, shouldShowVolunteerAction(for: request) {
                 VStack(spacing: 10) {
@@ -169,6 +186,18 @@ struct RequestDetailView: View {
         .overlay(alignment: .bottom) {
             if let error = viewModel.errorMessage {
                 RequestErrorBanner(message: error)
+            } else if let success = viewModel.successMessage {
+                RequestInfoBanner(message: success, color: .green)
+            }
+        }
+        .sheet(isPresented: $showEditSheet) {
+            EditRequestSheet(viewModel: viewModel) {
+                Task {
+                    let didUpdate = await viewModel.updateRequest(id: requestId, currentUser: currentUser)
+                    if didUpdate {
+                        showEditSheet = false
+                    }
+                }
             }
         }
         .confirmationDialog(
@@ -188,6 +217,9 @@ struct RequestDetailView: View {
         }
         .task {
             await reloadRequest()
+        }
+        .onChange(of: selectedEvidenceItem) { _, newItem in
+            uploadSelectedEvidence(newItem)
         }
     }
 
@@ -226,13 +258,28 @@ struct RequestDetailView: View {
         request.citizenId == currentUser?.id && request.statusValue.canBeCancelled
     }
 
+    private func shouldShowCitizenControls(for request: HelpRequestRecord) -> Bool {
+        request.citizenId == currentUser?.id
+            && request.statusValue != .completed
+            && request.statusValue != .cancelled
+    }
+
+    private func shouldShowEvidenceUpload(for request: HelpRequestRecord) -> Bool {
+        let isRequestOwner = request.citizenId == currentUser?.id
+        let isAssignedVolunteer = request.volunteerId == currentUser?.id
+
+        return (isRequestOwner || isAssignedVolunteer)
+            && request.statusValue != .completed
+            && request.statusValue != .cancelled
+    }
+
     private func shouldShowVolunteerAction(for request: HelpRequestRecord) -> Bool {
         request.volunteerId == currentUser?.id
             && (request.statusValue == .confirmed || request.statusValue == .inProgress)
     }
 
     private func bottomActionPadding(for request: HelpRequestRecord) -> CGFloat {
-        shouldShowCitizenCancel(for: request) || shouldShowVolunteerAction(for: request) ? 86 : 16
+        shouldShowCitizenControls(for: request) ? 148 : (shouldShowVolunteerAction(for: request) ? 86 : 16)
     }
 
     private func volunteerActionTitle(for request: HelpRequestRecord) -> String {
@@ -241,6 +288,253 @@ struct RequestDetailView: View {
 
     private func volunteerActionIcon(for request: HelpRequestRecord) -> String {
         request.statusValue == .confirmed ? "play.fill" : "checkmark.circle.fill"
+    }
+
+    private func evidenceSection(_ request: HelpRequestRecord) -> some View {
+        RequestCard {
+            HStack(alignment: .firstTextBaseline) {
+                RequestSectionTitle(title: "Evidence", systemImage: "photo.on.rectangle.angled")
+                Spacer()
+
+                if shouldShowEvidenceUpload(for: request) {
+                    PhotosPicker(
+                        selection: $selectedEvidenceItem,
+                        matching: .images,
+                        photoLibrary: .shared()
+                    ) {
+                        if viewModel.isUploadingEvidence {
+                            ProgressView()
+                        } else {
+                            Label("Add Photo", systemImage: "plus")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(viewModel.isUploadingEvidence || !viewModel.canUploadMoreEvidence)
+                }
+            }
+
+            if viewModel.evidenceItems.isEmpty {
+                Label("No evidence photos uploaded yet.", systemImage: "photo")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 12) {
+                    ForEach(viewModel.evidenceItems) { item in
+                        EvidenceRow(item: item)
+                    }
+                }
+            }
+
+            if shouldShowEvidenceUpload(for: request), !viewModel.canUploadMoreEvidence {
+                Label("Evidence upload limit reached for this request.", systemImage: "info.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func uploadSelectedEvidence(_ item: PhotosPickerItem?) {
+        guard let item else { return }
+
+        Task {
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self) else {
+                    viewModel.errorMessage = "Selected photo could not be loaded."
+                    selectedEvidenceItem = nil
+                    return
+                }
+
+                await viewModel.uploadEvidence(
+                    imageData: data,
+                    originalFileName: "evidence.jpg",
+                    currentUser: currentUser
+                )
+            } catch {
+                viewModel.errorMessage = error.localizedDescription
+            }
+
+            selectedEvidenceItem = nil
+        }
+    }
+}
+
+private struct EditRequestSheet: View {
+    @Bindable var viewModel: RequestDetailViewModel
+    let onSave: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var focusedField: Field?
+
+    private enum Field {
+        case description
+        case latitude
+        case longitude
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    RequestCard {
+                        RequestSectionTitle(title: "Situation Details", systemImage: "text.alignleft")
+
+                        TextEditor(text: $viewModel.editDescription)
+                            .focused($focusedField, equals: .description)
+                            .frame(minHeight: 140)
+                            .scrollContentBackground(.hidden)
+                            .padding(10)
+                            .background(Color(.tertiarySystemGroupedBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+
+                    RequestCard {
+                        RequestSectionTitle(title: "Urgency", systemImage: "gauge.with.needle")
+
+                        Picker("Urgency", selection: $viewModel.editUrgency) {
+                            ForEach(HelpRequestUrgency.allCases) { urgency in
+                                Text(urgency.title).tag(urgency)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
+                    RequestCard {
+                        RequestSectionTitle(title: "Location", systemImage: "location.fill")
+
+                        VStack(spacing: 12) {
+                            EditCoordinateField(
+                                title: "Latitude",
+                                text: $viewModel.editLatitude,
+                                focusedField: $focusedField,
+                                field: .latitude
+                            )
+
+                            EditCoordinateField(
+                                title: "Longitude",
+                                text: $viewModel.editLongitude,
+                                focusedField: $focusedField,
+                                field: .longitude
+                            )
+                        }
+                    }
+                }
+                .padding(16)
+            }
+            .background(RequestUI.background)
+            .navigationTitle("Update Request")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        focusedField = nil
+                        onSave()
+                    } label: {
+                        if viewModel.isSavingUpdate {
+                            ProgressView()
+                        } else {
+                            Text("Save")
+                                .fontWeight(.semibold)
+                        }
+                    }
+                    .disabled(viewModel.isSavingUpdate)
+                }
+            }
+        }
+        .presentationDetents([.large])
+        .scrollDismissesKeyboard(.interactively)
+    }
+}
+
+private struct EditCoordinateField<Field: Hashable>: View {
+    let title: String
+    @Binding var text: String
+    let focusedField: FocusState<Field?>.Binding
+    let field: Field
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            TextField(title, text: $text)
+                .focused(focusedField, equals: field)
+                .keyboardType(.numbersAndPunctuation)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .padding(12)
+                .background(Color(.tertiarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+    }
+}
+
+private struct EvidenceRow: View {
+    let item: RequestEvidenceViewState
+
+    var body: some View {
+        HStack(spacing: 12) {
+            EvidenceThumbnail(url: item.signedURL)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.record.fileName)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+
+                Text(item.record.createdAt.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(ByteCountFormatter.string(fromByteCount: Int64(item.record.fileSize), countStyle: .file))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(10)
+        .background(Color(.tertiarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct EvidenceThumbnail: View {
+    let url: URL?
+
+    var body: some View {
+        Group {
+            if let url {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        Image(systemName: "photo")
+                            .foregroundStyle(.secondary)
+                    @unknown default:
+                        Image(systemName: "photo")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                Image(systemName: "photo")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 64, height: 64)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 

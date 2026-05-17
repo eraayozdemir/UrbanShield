@@ -210,3 +210,25 @@ struct HelpRequestVolunteerRecord: Codable, Identifiable, Equatable {
         HelpRequestStatus(rawValue: status) ?? .confirmed
     }
 }
+
+struct RequestEvidenceRecord: Codable, Identifiable, Equatable {
+    let id: UUID
+    let requestId: UUID
+    let uploadedBy: UUID
+    let filePath: String
+    let fileName: String
+    let contentType: String
+    let fileSize: Int
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case requestId = "request_id"
+        case uploadedBy = "uploaded_by"
+        case filePath = "file_path"
+        case fileName = "file_name"
+        case contentType = "content_type"
+        case fileSize = "file_size"
+        case createdAt = "created_at"
+    }
+}

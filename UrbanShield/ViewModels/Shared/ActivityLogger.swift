@@ -8,6 +8,7 @@ import Supabase
 
 enum ActivityActionType: String, CaseIterable, Identifiable, Codable {
     case requestCreated = "request_created"
+    case requestUpdated = "request_updated"
     case requestCancelled = "request_cancelled"
     case requestConfirmed = "request_confirmed"
     case requestStarted = "request_started"
@@ -20,12 +21,14 @@ enum ActivityActionType: String, CaseIterable, Identifiable, Codable {
     case suspiciousReportSubmitted = "suspicious_report_submitted"
     case suspiciousReportReviewed = "suspicious_report_reviewed"
     case roleUpdated = "role_updated"
+    case evidenceUploaded = "evidence_uploaded"
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .requestCreated: return "Request Created"
+        case .requestUpdated: return "Request Updated"
         case .requestCancelled: return "Request Cancelled"
         case .requestConfirmed: return "Request Confirmed"
         case .requestStarted: return "Request Started"
@@ -38,6 +41,7 @@ enum ActivityActionType: String, CaseIterable, Identifiable, Codable {
         case .suspiciousReportSubmitted: return "Report Submitted"
         case .suspiciousReportReviewed: return "Report Reviewed"
         case .roleUpdated: return "Role Updated"
+        case .evidenceUploaded: return "Evidence Uploaded"
         }
     }
 }
