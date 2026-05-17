@@ -97,6 +97,7 @@ final class CoordinatorDashboardViewModel {
                 message: "Priority changed from \(request.priorityValue.title) to \(priority.title)."
             )
 
+
             try? await ActivityLogger.log(
                 actor: currentUser,
                 action: .requestPriorityUpdated,
@@ -109,6 +110,7 @@ final class CoordinatorDashboardViewModel {
                     "new_priority": priority.rawValue
                 ]
             )
+
 
             if let index = requests.firstIndex(where: { $0.id == request.id }) {
                 requests[index] = updatedRequest
@@ -173,6 +175,7 @@ final class CoordinatorDashboardViewModel {
                 message: "Status changed from \(request.statusValue.title) to \(status.title)."
             )
 
+
             try? await ActivityLogger.log(
                 actor: currentUser,
                 action: .requestStatusUpdated,
@@ -185,6 +188,7 @@ final class CoordinatorDashboardViewModel {
                     "new_status": status.rawValue
                 ]
             )
+
 
             if let index = requests.firstIndex(where: { $0.id == request.id }) {
                 requests[index] = updatedRequest
@@ -319,6 +323,7 @@ final class CoordinatorDashboardViewModel {
                 message: "\(volunteer.fullName) assigned to \(request.requestTypeValue.title)."
             )
 
+
             try? await ActivityLogger.log(
                 actor: currentUser,
                 action: .volunteerAssigned,
@@ -333,6 +338,7 @@ final class CoordinatorDashboardViewModel {
                     "volunteer_name": volunteer.fullName
                 ]
             )
+
 
             if let index = requests.firstIndex(where: { $0.id == request.id }) {
                 requests[index] = updatedRequest
