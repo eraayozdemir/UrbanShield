@@ -125,6 +125,18 @@ private struct VolunteerDashboardView: View {
                 .buttonStyle(.plain)
 
                 NavigationLink {
+                    EmergencyAnnouncementsView(sessionViewModel: sessionViewModel)
+                } label: {
+                    VolunteerActionRow(
+                        icon: "megaphone.fill",
+                        title: "Emergency Announcements",
+                        subtitle: "Read warnings and volunteer instructions from coordinators.",
+                        tint: .purple
+                    )
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink {
                     SuspiciousActivityReportView(sessionViewModel: sessionViewModel)
                 } label: {
                     VolunteerActionRow(

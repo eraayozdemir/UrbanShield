@@ -115,6 +115,18 @@ private struct CitizenDashboardView: View {
                 .buttonStyle(.plain)
 
                 NavigationLink {
+                    EmergencyAnnouncementsView(sessionViewModel: sessionViewModel)
+                } label: {
+                    HomeActionRow(
+                        icon: "megaphone.fill",
+                        title: "Emergency Announcements",
+                        subtitle: "Read warnings and instructions published by coordinators.",
+                        tint: .purple
+                    )
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink {
                     ProfileView(sessionViewModel: sessionViewModel)
                 } label: {
                     HomeActionRow(
