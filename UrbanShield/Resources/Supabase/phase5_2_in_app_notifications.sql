@@ -66,6 +66,28 @@ for insert
 to authenticated
 with check (auth.uid() is not null);
 
+create or replace function public.notification_recipient_ids_for_roles(
+    p_roles text[],
+    p_excluding_user_id uuid default null
+)
+returns table(id uuid)
+language sql
+security definer
+set search_path = public
+stable
+as $$
+    select p.id
+    from public.profiles p
+    where p.role = any(p_roles)
+      and (
+          p_excluding_user_id is null
+          or p.id <> p_excluding_user_id
+      )
+$$;
+
+grant execute on function public.notification_recipient_ids_for_roles(text[], uuid)
+to authenticated;
+
 do $$
 begin
     if not exists (

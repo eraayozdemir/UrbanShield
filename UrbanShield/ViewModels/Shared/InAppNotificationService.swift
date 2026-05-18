@@ -106,18 +106,18 @@ enum InAppNotificationService {
         announcementId: UUID? = nil
     ) async throws {
         let recipients: [NotificationRecipientRecord] = try await supabase
-            .from("profiles")
-            .select("id, role")
-            .in("role", values: roles.map(\.rawValue))
+            .rpc(
+                "notification_recipient_ids_for_roles",
+                params: NotificationRoleRecipientsParams(
+                    roles: roles.map(\.rawValue),
+                    excludingUserId: excludingUserId
+                )
+            )
             .execute()
             .value
 
-        let recipientIds = recipients
-            .map(\.id)
-            .filter { $0 != excludingUserId }
-
         try await notifyUsers(
-            userIds: recipientIds,
+            userIds: recipients.map(\.id),
             actorId: actorId,
             title: title,
             message: message,
@@ -177,6 +177,16 @@ enum InAppNotificationService {
     }
 }
 
+private struct NotificationRoleRecipientsParams: Encodable {
+    let roles: [String]
+    let excludingUserId: UUID?
+
+    enum CodingKeys: String, CodingKey {
+        case roles = "p_roles"
+        case excludingUserId = "p_excluding_user_id"
+    }
+}
+
 private struct InAppNotificationInsert: Encodable {
     let userId: UUID
     let actorId: UUID?
@@ -205,5 +215,4 @@ private struct InAppNotificationInsert: Encodable {
 
 private struct NotificationRecipientRecord: Decodable {
     let id: UUID
-    let role: String
 }

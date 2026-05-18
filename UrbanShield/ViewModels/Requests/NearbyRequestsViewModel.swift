@@ -105,7 +105,6 @@ final class NearbyRequestsViewModel {
         defer { confirmingRequestId = nil }
 
         do {
-            let now = Date()
             let activeAssignments: [HelpRequestVolunteerRecord] = try await supabase
                 .from("help_request_volunteers")
                 .select()
@@ -123,39 +122,10 @@ final class NearbyRequestsViewModel {
             }
 
             try await supabase
-                .from("help_request_volunteers")
-                .insert(
-                    VolunteerAssignmentInsert(
-                        requestId: request.id,
-                        volunteerId: volunteer.id,
-                        status: HelpRequestStatus.confirmed.rawValue
-                    )
+                .rpc(
+                    "accept_help_request_as_volunteer",
+                    params: AcceptHelpRequestParams(requestId: request.id)
                 )
-                .execute()
-
-            try? await supabase
-                .from("help_requests")
-                .update(
-                    RequestConfirmationUpdate(
-                        volunteerId: volunteer.id,
-                        status: HelpRequestStatus.confirmed.rawValue,
-                        confirmedAt: now,
-                        updatedAt: now
-                    )
-                )
-                .eq("id", value: request.id.uuidString)
-                .eq("status", value: HelpRequestStatus.open.rawValue)
-                .execute()
-
-            try? await supabase
-                .from("profiles")
-                .update(
-                    VolunteerAcceptanceProfileUpdate(
-                        role: UserRole.volunteer.rawValue,
-                        availabilityStatus: VolunteerAvailability.busy.rawValue
-                    )
-                )
-                .eq("id", value: volunteer.id.uuidString)
                 .execute()
 
             try? await ActivityLogger.log(
@@ -184,7 +154,7 @@ final class NearbyRequestsViewModel {
                 requestId: request.id
             )
 
-            requests.removeAll { $0.id == request.id }
+            await loadOpenRequests(currentUserId: volunteer.id)
             successMessage = "Request confirmed. Your volunteer status is now busy."
             return true
         } catch where error.isCancellation {
@@ -245,38 +215,10 @@ final class NearbyRequestsViewModel {
     }
 }
 
-private struct VolunteerAssignmentInsert: Encodable {
+private struct AcceptHelpRequestParams: Encodable {
     let requestId: UUID
-    let volunteerId: UUID
-    let status: String
 
     enum CodingKeys: String, CodingKey {
-        case requestId = "request_id"
-        case volunteerId = "volunteer_id"
-        case status
-    }
-}
-
-private struct VolunteerAcceptanceProfileUpdate: Encodable {
-    let role: String
-    let availabilityStatus: String
-
-    enum CodingKeys: String, CodingKey {
-        case role
-        case availabilityStatus = "availability_status"
-    }
-}
-
-private struct RequestConfirmationUpdate: Encodable {
-    let volunteerId: UUID
-    let status: String
-    let confirmedAt: Date
-    let updatedAt: Date
-
-    enum CodingKeys: String, CodingKey {
-        case volunteerId = "volunteer_id"
-        case status
-        case confirmedAt = "confirmed_at"
-        case updatedAt = "updated_at"
+        case requestId = "p_request_id"
     }
 }

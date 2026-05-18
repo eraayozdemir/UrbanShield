@@ -311,7 +311,7 @@ final class RequestDetailViewModel {
                 .value
             request = cancelledRequest
 
-            try? await supabase
+            _ = try? await supabase
                 .from("help_request_volunteers")
                 .update(VolunteerAssignmentCancellationUpdate(status: HelpRequestStatus.cancelled.rawValue, updatedAt: now))
                 .eq("request_id", value: id.uuidString)
@@ -405,7 +405,7 @@ final class RequestDetailViewModel {
                     .eq("status", value: currentStatus.rawValue)
                     .execute()
 
-                try? await supabase
+                _ = try? await supabase
                     .from("help_requests")
                     .update(
                         RequestStatusUpdate(
