@@ -119,6 +119,15 @@ private struct CoordinatorSettingsView: View {
                 }
                 .buttonStyle(.bordered)
 
+                NavigationLink {
+                    NotificationsView(sessionViewModel: sessionViewModel)
+                } label: {
+                    Label("Open Notifications", systemImage: "bell.badge.fill")
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 50)
+                }
+                .buttonStyle(.bordered)
+
                 Button(role: .destructive) {
                     Task { await sessionViewModel.signOut() }
                 } label: {

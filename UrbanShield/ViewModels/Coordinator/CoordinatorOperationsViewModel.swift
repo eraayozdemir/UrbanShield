@@ -144,6 +144,18 @@ final class CoordinatorOperationsViewModel {
                     "status": inserted.status
                 ]
             )
+            if let request = activeRequests.first(where: { $0.id == inserted.requestId }) {
+                try? await InAppNotificationService.notifyUser(
+                    userId: request.citizenId,
+                    actorId: currentUser.id,
+                    title: "Supply support updated",
+                    message: "\(inserted.supportTypeValue.title) support is \(inserted.statusValue.title.lowercased()) for your request.",
+                    category: .coordinator,
+                    linkType: .request,
+                    linkId: request.id,
+                    requestId: request.id
+                )
+            }
             successMessage = "Supply support logged."
         } catch where error.isCancellation {
             return
@@ -202,6 +214,17 @@ final class CoordinatorOperationsViewModel {
                     "audience": inserted.audience
                 ]
             )
+            try? await InAppNotificationService.notifyRoles(
+                roles: notificationRoles(for: inserted.audienceValue),
+                excludingUserId: currentUser.id,
+                actorId: currentUser.id,
+                title: inserted.title,
+                message: inserted.message,
+                category: .announcement,
+                linkType: .announcement,
+                linkId: inserted.id,
+                announcementId: inserted.id
+            )
             successMessage = "Announcement published."
         } catch where error.isCancellation {
             return
@@ -228,6 +251,17 @@ final class CoordinatorOperationsViewModel {
     private func trimmedOptional(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func notificationRoles(for audience: EmergencyAnnouncementAudience) -> [UserRole] {
+        switch audience {
+        case .all:
+            return [.citizen, .volunteer]
+        case .citizens:
+            return [.citizen]
+        case .volunteers:
+            return [.volunteer]
+        }
     }
 }
 

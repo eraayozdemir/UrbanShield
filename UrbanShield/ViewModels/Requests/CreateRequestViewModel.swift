@@ -84,6 +84,18 @@ final class CreateRequestViewModel {
                 ]
             )
 
+            if inserted.urgencyValue == .critical {
+                try? await InAppNotificationService.notifyCoordinatorsAndAdmins(
+                    actorId: currentUser.id,
+                    title: "Critical request created",
+                    message: "\(inserted.requestTypeValue.title) request needs coordinator review.",
+                    category: .request,
+                    linkType: .request,
+                    linkId: inserted.id,
+                    requestId: inserted.id
+                )
+            }
+
             clearForm()
             didSubmit = true
             return true

@@ -173,6 +173,17 @@ final class NearbyRequestsViewModel {
                 ]
             )
 
+            try? await InAppNotificationService.notifyUser(
+                userId: request.citizenId,
+                actorId: volunteer.id,
+                title: "Request accepted",
+                message: "\(volunteer.fullName) accepted your \(request.requestTypeValue.title) request.",
+                category: .assignment,
+                linkType: .request,
+                linkId: request.id,
+                requestId: request.id
+            )
+
             requests.removeAll { $0.id == request.id }
             successMessage = "Request confirmed. Your volunteer status is now busy."
             return true

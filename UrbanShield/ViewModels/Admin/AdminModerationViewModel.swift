@@ -166,6 +166,18 @@ final class AdminModerationViewModel {
                 ]
             )
 
+            try? await InAppNotificationService.notifyUser(
+                userId: row.report.reporterId,
+                actorId: currentUser.id,
+                title: "Report reviewed",
+                message: "Your suspicious activity report is now \(status.title).",
+                category: .moderation,
+                linkType: .report,
+                linkId: row.report.id,
+                requestId: row.report.requestId,
+                reportId: row.report.id
+            )
+
             moderationNote = ""
             actions = try await loadRecentActions()
             successMessage = "Report status updated."

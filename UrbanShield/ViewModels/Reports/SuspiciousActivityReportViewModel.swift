@@ -113,6 +113,16 @@ final class SuspiciousActivityReportViewModel {
                     "status": inserted.status
                 ]
             )
+            try? await InAppNotificationService.notifyAdmins(
+                actorId: currentUser.id,
+                title: "Suspicious activity report",
+                message: "\(inserted.categoryValue.title) report submitted for admin review.",
+                category: .report,
+                linkType: .report,
+                linkId: inserted.id,
+                requestId: inserted.requestId,
+                reportId: inserted.id
+            )
             selectedRequestId = nil
             category = .fakeRequest
             details = ""

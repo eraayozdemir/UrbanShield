@@ -89,6 +89,15 @@ private struct AdminSettingsView: View {
                         .frame(minHeight: 50)
                 }
                 .buttonStyle(.bordered)
+
+                NavigationLink {
+                    NotificationsView(sessionViewModel: sessionViewModel)
+                } label: {
+                    Label("Open Notifications", systemImage: "bell.badge.fill")
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 50)
+                }
+                .buttonStyle(.bordered)
             }
             .padding(16)
         }

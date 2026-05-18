@@ -137,6 +137,17 @@ final class CoordinatorDashboardViewModel {
                 ]
             )
 
+            try? await InAppNotificationService.notifyUser(
+                userId: request.citizenId,
+                actorId: currentUser.id,
+                title: "Request priority updated",
+                message: "Your \(request.requestTypeValue.title) request priority is now \(priority.title).",
+                category: .coordinator,
+                linkType: .request,
+                linkId: request.id,
+                requestId: request.id
+            )
+
 
             if let index = requests.firstIndex(where: { $0.id == request.id }) {
                 requests[index] = updatedRequest
@@ -213,6 +224,21 @@ final class CoordinatorDashboardViewModel {
                     "old_status": request.statusValue.rawValue,
                     "new_status": status.rawValue
                 ]
+            )
+
+            let recipientIds = [
+                request.citizenId,
+                request.volunteerId
+            ].compactMap { $0 }
+            try? await InAppNotificationService.notifyUsers(
+                userIds: recipientIds,
+                actorId: currentUser.id,
+                title: "Request status updated",
+                message: "\(request.requestTypeValue.title) request moved to \(status.title).",
+                category: .coordinator,
+                linkType: .request,
+                linkId: request.id,
+                requestId: request.id
             )
 
 
@@ -363,6 +389,17 @@ final class CoordinatorDashboardViewModel {
                     "new_status": HelpRequestStatus.confirmed.rawValue,
                     "volunteer_name": volunteer.fullName
                 ]
+            )
+
+            try? await InAppNotificationService.notifyUsers(
+                userIds: [request.citizenId, volunteer.id],
+                actorId: currentUser.id,
+                title: "Volunteer assigned",
+                message: "\(volunteer.fullName) was assigned to \(request.requestTypeValue.title).",
+                category: .assignment,
+                linkType: .request,
+                linkId: request.id,
+                requestId: request.id
             )
 
 

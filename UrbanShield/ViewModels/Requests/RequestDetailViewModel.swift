@@ -443,6 +443,19 @@ final class RequestDetailViewModel {
                 ]
             )
 
+            if let citizenId = request?.citizenId, citizenId != currentUser.id {
+                try? await InAppNotificationService.notifyUser(
+                    userId: citizenId,
+                    actorId: currentUser.id,
+                    title: nextStatus == .inProgress ? "Help is in progress" : "Request completed",
+                    message: "\(request?.requestTypeValue.title ?? "Your request") moved to \(nextStatus.title).",
+                    category: .assignment,
+                    linkType: .request,
+                    linkId: id,
+                    requestId: id
+                )
+            }
+
             await loadRequest(id: id, currentUserId: currentUser.id)
         } catch where error.isCancellation {
             return

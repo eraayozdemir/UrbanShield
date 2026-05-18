@@ -9,6 +9,14 @@ struct VolunteerHomeView: View {
     let sessionViewModel: AuthSessionViewModel
 
     @State private var selectedTab: VolunteerTab = .tasks
+    @State private var notificationsViewModel = NotificationsViewModel()
+
+    private var currentUser: User? {
+        if case .authenticated(let user) = sessionViewModel.session {
+            return user
+        }
+        return nil
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -37,6 +45,18 @@ struct VolunteerHomeView: View {
             .tag(VolunteerTab.requests)
 
             NavigationStack {
+                NotificationsView(
+                    sessionViewModel: sessionViewModel,
+                    viewModel: notificationsViewModel
+                )
+            }
+            .tabItem {
+                Label(VolunteerTab.notifications.title, systemImage: VolunteerTab.notifications.systemImage)
+            }
+            .badge(notificationsViewModel.unreadCount)
+            .tag(VolunteerTab.notifications)
+
+            NavigationStack {
                 ProfileView(sessionViewModel: sessionViewModel)
             }
             .tabItem {
@@ -45,6 +65,9 @@ struct VolunteerHomeView: View {
             .tag(VolunteerTab.profile)
         }
         .tint(.green)
+        .task {
+            await notificationsViewModel.loadUnreadCount(currentUser: currentUser)
+        }
     }
 }
 
@@ -52,6 +75,7 @@ private enum VolunteerTab: Hashable {
     case tasks
     case nearby
     case requests
+    case notifications
     case profile
 
     var title: String {
@@ -59,6 +83,7 @@ private enum VolunteerTab: Hashable {
         case .tasks: return "Tasks"
         case .nearby: return "Nearby"
         case .requests: return "Requests"
+        case .notifications: return "Alerts"
         case .profile: return "Profile"
         }
     }
@@ -68,6 +93,7 @@ private enum VolunteerTab: Hashable {
         case .tasks: return "checkmark.shield.fill"
         case .nearby: return "mappin.and.ellipse"
         case .requests: return "list.bullet.rectangle.fill"
+        case .notifications: return "bell.badge.fill"
         case .profile: return "person.crop.circle.fill"
         }
     }
@@ -131,6 +157,18 @@ private struct VolunteerDashboardView: View {
                         icon: "megaphone.fill",
                         title: "Emergency Announcements",
                         subtitle: "Read warnings and volunteer instructions from coordinators.",
+                        tint: .purple
+                    )
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink {
+                    NotificationsView(sessionViewModel: sessionViewModel)
+                } label: {
+                    VolunteerActionRow(
+                        icon: "bell.badge.fill",
+                        title: "Notifications",
+                        subtitle: "Review assignment updates, announcements, and report decisions.",
                         tint: .purple
                     )
                 }

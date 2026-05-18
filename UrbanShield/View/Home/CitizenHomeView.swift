@@ -9,6 +9,14 @@ struct CitizenHomeView: View {
     let sessionViewModel: AuthSessionViewModel
 
     @State private var selectedTab: CitizenTab = .home
+    @State private var notificationsViewModel = NotificationsViewModel()
+
+    private var currentUser: User? {
+        if case .authenticated(let user) = sessionViewModel.session {
+            return user
+        }
+        return nil
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -37,6 +45,18 @@ struct CitizenHomeView: View {
             .tag(CitizenTab.requests)
 
             NavigationStack {
+                NotificationsView(
+                    sessionViewModel: sessionViewModel,
+                    viewModel: notificationsViewModel
+                )
+            }
+            .tabItem {
+                Label(CitizenTab.notifications.title, systemImage: CitizenTab.notifications.systemImage)
+            }
+            .badge(notificationsViewModel.unreadCount)
+            .tag(CitizenTab.notifications)
+
+            NavigationStack {
                 ProfileView(sessionViewModel: sessionViewModel)
             }
             .tabItem {
@@ -45,6 +65,9 @@ struct CitizenHomeView: View {
             .tag(CitizenTab.profile)
         }
         .tint(.blue)
+        .task {
+            await notificationsViewModel.loadUnreadCount(currentUser: currentUser)
+        }
     }
 }
 
@@ -52,6 +75,7 @@ private enum CitizenTab: Hashable {
     case home
     case nearby
     case requests
+    case notifications
     case profile
 
     var title: String {
@@ -59,6 +83,7 @@ private enum CitizenTab: Hashable {
         case .home: return "Home"
         case .nearby: return "Nearby"
         case .requests: return "Requests"
+        case .notifications: return "Alerts"
         case .profile: return "Profile"
         }
     }
@@ -68,6 +93,7 @@ private enum CitizenTab: Hashable {
         case .home: return "shield.lefthalf.filled"
         case .nearby: return "mappin.and.ellipse"
         case .requests: return "list.bullet.rectangle.fill"
+        case .notifications: return "bell.badge.fill"
         case .profile: return "person.crop.circle.fill"
         }
     }
@@ -134,6 +160,18 @@ private struct CitizenDashboardView: View {
                         title: "Profile",
                         subtitle: "Review your account and role information.",
                         tint: .teal
+                    )
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink {
+                    NotificationsView(sessionViewModel: sessionViewModel)
+                } label: {
+                    HomeActionRow(
+                        icon: "bell.badge.fill",
+                        title: "Notifications",
+                        subtitle: "Review request updates, announcements, and moderation messages.",
+                        tint: .purple
                     )
                 }
                 .buttonStyle(.plain)
