@@ -73,9 +73,13 @@ struct CoordinatorMapView: View {
         }
         .task {
             await reloadMap()
+            await viewModel.startRealtime(currentUser: currentUser)
             if viewModel.latitudeText.isEmpty && viewModel.longitudeText.isEmpty {
                 locationService.requestCurrentLocation()
             }
+        }
+        .onDisappear {
+            viewModel.stopRealtime()
         }
         .onReceive(locationService.$coordinate.compactMap { $0 }) { coordinate in
             applyCurrentLocation(coordinate, overwritingManualInput: shouldOverwriteWithCurrentLocation)

@@ -14,6 +14,7 @@ final class MyRequestsViewModel {
     var requests: [HelpRequestRecord] = []
     var isLoading: Bool = false
     var errorMessage: String?
+    private let realtimeSubscription = RealtimeRefreshSubscription()
 
     func loadRequests(citizenId: UUID?) async {
         errorMessage = nil
@@ -39,6 +40,32 @@ final class MyRequestsViewModel {
             return
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func startRealtime(citizenId: UUID?) async {
+        guard let citizenId else { return }
+
+        do {
+            try await realtimeSubscription.start(
+                channelName: "my-requests-\(citizenId.uuidString)",
+                registrations: [
+                    RealtimePostgresChangeRegistration(
+                        table: "help_requests",
+                        filter: "citizen_id=eq.\(citizenId.uuidString)"
+                    )
+                ]
+            ) { [weak self] in
+                await self?.loadRequests(citizenId: citizenId)
+            }
+        } catch {
+            // Manual refresh remains available if realtime is temporarily unavailable.
+        }
+    }
+
+    func stopRealtime() {
+        Task {
+            await realtimeSubscription.stop()
         }
     }
 }

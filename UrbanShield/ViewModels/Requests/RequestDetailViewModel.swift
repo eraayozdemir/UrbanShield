@@ -15,6 +15,7 @@ final class RequestDetailViewModel {
     private let evidenceBucket = "request-evidence"
     private let maxEvidenceCount = 3
     private let maxEvidenceBytes = 1_000_000
+    private let realtimeSubscription = RealtimeRefreshSubscription()
 
     var request: HelpRequestRecord?
     var evidenceItems: [RequestEvidenceViewState] = []
@@ -67,6 +68,38 @@ final class RequestDetailViewModel {
             return
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func startRealtime(id: UUID, currentUserId: UUID?) async {
+        do {
+            try await realtimeSubscription.start(
+                channelName: "request-detail-\(id.uuidString)",
+                registrations: [
+                    RealtimePostgresChangeRegistration(
+                        table: "help_requests",
+                        filter: "id=eq.\(id.uuidString)"
+                    ),
+                    RealtimePostgresChangeRegistration(
+                        table: "help_request_volunteers",
+                        filter: "request_id=eq.\(id.uuidString)"
+                    ),
+                    RealtimePostgresChangeRegistration(
+                        table: "request_evidence",
+                        filter: "request_id=eq.\(id.uuidString)"
+                    )
+                ]
+            ) { [weak self] in
+                await self?.loadRequest(id: id, currentUserId: currentUserId)
+            }
+        } catch {
+            // Manual refresh remains available if realtime is temporarily unavailable.
+        }
+    }
+
+    func stopRealtime() {
+        Task {
+            await realtimeSubscription.stop()
         }
     }
 

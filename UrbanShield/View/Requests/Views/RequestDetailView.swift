@@ -217,6 +217,10 @@ struct RequestDetailView: View {
         }
         .task {
             await reloadRequest()
+            await viewModel.startRealtime(id: requestId, currentUserId: currentUser?.id)
+        }
+        .onDisappear {
+            viewModel.stopRealtime()
         }
         .onChange(of: selectedEvidenceItem) { _, newItem in
             uploadSelectedEvidence(newItem)

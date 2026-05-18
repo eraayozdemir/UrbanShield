@@ -16,6 +16,7 @@ final class NearbyRequestsViewModel {
     var confirmingRequestId: UUID?
     var errorMessage: String?
     var successMessage: String?
+    private let realtimeSubscription = RealtimeRefreshSubscription()
 
     func loadOpenRequests(currentUserId: UUID?) async {
         errorMessage = nil
@@ -178,6 +179,36 @@ final class NearbyRequestsViewModel {
         } catch {
             errorMessage = error.localizedDescription
             return false
+        }
+    }
+
+    func startRealtime(currentUserId: UUID?) async {
+        guard let currentUserId else { return }
+
+        do {
+            try await realtimeSubscription.start(
+                channelName: "nearby-requests-\(currentUserId.uuidString)",
+                registrations: [
+                    RealtimePostgresChangeRegistration(
+                        table: "help_requests",
+                        filter: "status=in.(\(HelpRequestStatus.open.rawValue),\(HelpRequestStatus.confirmed.rawValue))"
+                    ),
+                    RealtimePostgresChangeRegistration(
+                        table: "help_request_volunteers",
+                        filter: "volunteer_id=eq.\(currentUserId.uuidString)"
+                    )
+                ]
+            ) { [weak self] in
+                await self?.loadOpenRequests(currentUserId: currentUserId)
+            }
+        } catch {
+            // Manual refresh remains available if realtime is temporarily unavailable.
+        }
+    }
+
+    func stopRealtime() {
+        Task {
+            await realtimeSubscription.stop()
         }
     }
 }

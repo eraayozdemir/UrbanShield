@@ -75,6 +75,10 @@ struct VolunteerTasksView: View {
         }
         .task {
             await reloadTasks()
+            await viewModel.startRealtime(volunteerId: currentUser?.id)
+        }
+        .onDisappear {
+            viewModel.stopRealtime()
         }
     }
 

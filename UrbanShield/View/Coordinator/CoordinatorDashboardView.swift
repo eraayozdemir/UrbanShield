@@ -130,6 +130,10 @@ struct CoordinatorDashboardView: View {
         }
         .task {
             await reloadDashboard()
+            await viewModel.startRealtime(currentUser: currentUser)
+        }
+        .onDisappear {
+            viewModel.stopRealtime()
         }
     }
 

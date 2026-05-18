@@ -18,6 +18,7 @@ final class CoordinatorDashboardViewModel {
     var updatingRequestId: UUID?
     var errorMessage: String?
     var successMessage: String?
+    private let realtimeSubscription = RealtimeRefreshSubscription()
 
     func loadRequests(currentUser: User?) async {
         errorMessage = nil
@@ -54,6 +55,31 @@ final class CoordinatorDashboardViewModel {
             return
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func startRealtime(currentUser: User?) async {
+        guard currentUser?.role == .coordinator || currentUser?.role == .admin else { return }
+
+        do {
+            try await realtimeSubscription.start(
+                channelName: "coordinator-dashboard-\(currentUser?.id.uuidString ?? "unknown")",
+                registrations: [
+                    RealtimePostgresChangeRegistration(table: "help_requests"),
+                    RealtimePostgresChangeRegistration(table: "help_request_volunteers"),
+                    RealtimePostgresChangeRegistration(table: "coordination_logs")
+                ]
+            ) { [weak self, currentUser] in
+                await self?.loadRequests(currentUser: currentUser)
+            }
+        } catch {
+            // Manual refresh remains available if realtime is temporarily unavailable.
+        }
+    }
+
+    func stopRealtime() {
+        Task {
+            await realtimeSubscription.stop()
         }
     }
 

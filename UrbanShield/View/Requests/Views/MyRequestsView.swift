@@ -91,6 +91,10 @@ struct MyRequestsView: View {
         }
         .task {
             await reloadRequests()
+            await viewModel.startRealtime(citizenId: currentUser?.id)
+        }
+        .onDisappear {
+            viewModel.stopRealtime()
         }
     }
 

@@ -119,9 +119,13 @@ struct NearbyRequestsView: View {
         }
         .task {
             await viewModel.loadOpenRequests(currentUserId: currentUser?.id)
+            await viewModel.startRealtime(currentUserId: currentUser?.id)
             if latitudeText.isEmpty && longitudeText.isEmpty {
                 locationService.requestCurrentLocation()
             }
+        }
+        .onDisappear {
+            viewModel.stopRealtime()
         }
         .onReceive(locationService.$coordinate.compactMap { $0 }) { coordinate in
             applyCurrentLocation(coordinate, overwritingManualInput: shouldOverwriteWithCurrentLocation)

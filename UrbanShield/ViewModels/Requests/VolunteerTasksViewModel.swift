@@ -14,6 +14,7 @@ final class VolunteerTasksViewModel {
     var tasks: [HelpRequestRecord] = []
     var isLoading: Bool = false
     var errorMessage: String?
+    private let realtimeSubscription = RealtimeRefreshSubscription()
 
     func loadTasks(volunteerId: UUID?) async {
         errorMessage = nil
@@ -62,6 +63,32 @@ final class VolunteerTasksViewModel {
             return
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func startRealtime(volunteerId: UUID?) async {
+        guard let volunteerId else { return }
+
+        do {
+            try await realtimeSubscription.start(
+                channelName: "volunteer-tasks-\(volunteerId.uuidString)",
+                registrations: [
+                    RealtimePostgresChangeRegistration(
+                        table: "help_request_volunteers",
+                        filter: "volunteer_id=eq.\(volunteerId.uuidString)"
+                    )
+                ]
+            ) { [weak self] in
+                await self?.loadTasks(volunteerId: volunteerId)
+            }
+        } catch {
+            // Manual refresh remains available if realtime is temporarily unavailable.
+        }
+    }
+
+    func stopRealtime() {
+        Task {
+            await realtimeSubscription.stop()
         }
     }
 }

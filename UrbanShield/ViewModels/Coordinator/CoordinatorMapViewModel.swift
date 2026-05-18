@@ -22,6 +22,7 @@ final class CoordinatorMapViewModel {
     var radiusText = ""
     var isLoading = false
     var errorMessage: String?
+    private let realtimeSubscription = RealtimeRefreshSubscription()
 
     func loadRequests(currentUser: User?) async {
         errorMessage = nil
@@ -46,6 +47,29 @@ final class CoordinatorMapViewModel {
             return
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func startRealtime(currentUser: User?) async {
+        guard currentUser?.role == .coordinator || currentUser?.role == .admin else { return }
+
+        do {
+            try await realtimeSubscription.start(
+                channelName: "coordinator-map-\(currentUser?.id.uuidString ?? "unknown")",
+                registrations: [
+                    RealtimePostgresChangeRegistration(table: "help_requests")
+                ]
+            ) { [weak self, currentUser] in
+                await self?.loadRequests(currentUser: currentUser)
+            }
+        } catch {
+            // Manual refresh remains available if realtime is temporarily unavailable.
+        }
+    }
+
+    func stopRealtime() {
+        Task {
+            await realtimeSubscription.stop()
         }
     }
 
