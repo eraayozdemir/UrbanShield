@@ -120,6 +120,7 @@ struct NearbyRequestsView: View {
         .task {
             await viewModel.loadOpenRequests(currentUserId: currentUser?.id)
             await viewModel.startRealtime(currentUserId: currentUser?.id)
+            viewModel.startPollingFallback(currentUserId: currentUser?.id)
             if latitudeText.isEmpty && longitudeText.isEmpty {
                 locationService.requestCurrentLocation()
             }

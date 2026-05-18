@@ -17,6 +17,7 @@ final class NearbyRequestsViewModel {
     var errorMessage: String?
     var successMessage: String?
     private let realtimeSubscription = RealtimeRefreshSubscription()
+    private var pollingTask: Task<Void, Never>?
 
     func loadOpenRequests(currentUserId: UUID?) async {
         errorMessage = nil
@@ -136,6 +137,7 @@ final class NearbyRequestsViewModel {
                 .from("help_requests")
                 .update(
                     RequestConfirmationUpdate(
+                        volunteerId: volunteer.id,
                         status: HelpRequestStatus.confirmed.rawValue,
                         confirmedAt: now,
                         updatedAt: now
@@ -190,8 +192,7 @@ final class NearbyRequestsViewModel {
                 channelName: "nearby-requests-\(currentUserId.uuidString)",
                 registrations: [
                     RealtimePostgresChangeRegistration(
-                        table: "help_requests",
-                        filter: "status=in.(\(HelpRequestStatus.open.rawValue),\(HelpRequestStatus.confirmed.rawValue))"
+                        table: "help_requests"
                     ),
                     RealtimePostgresChangeRegistration(
                         table: "help_request_volunteers",
@@ -206,7 +207,27 @@ final class NearbyRequestsViewModel {
         }
     }
 
+    func startPollingFallback(currentUserId: UUID?) {
+        guard let currentUserId, pollingTask == nil else { return }
+
+        pollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: 10_000_000_000)
+                } catch {
+                    return
+                }
+
+                guard !Task.isCancelled else { return }
+                await self?.loadOpenRequests(currentUserId: currentUserId)
+            }
+        }
+    }
+
     func stopRealtime() {
+        pollingTask?.cancel()
+        pollingTask = nil
+
         Task {
             await realtimeSubscription.stop()
         }
@@ -236,11 +257,13 @@ private struct VolunteerAcceptanceProfileUpdate: Encodable {
 }
 
 private struct RequestConfirmationUpdate: Encodable {
+    let volunteerId: UUID
     let status: String
     let confirmedAt: Date
     let updatedAt: Date
 
     enum CodingKeys: String, CodingKey {
+        case volunteerId = "volunteer_id"
         case status
         case confirmedAt = "confirmed_at"
         case updatedAt = "updated_at"

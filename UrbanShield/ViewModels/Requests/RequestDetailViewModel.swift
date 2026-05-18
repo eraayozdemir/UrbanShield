@@ -390,11 +390,6 @@ final class RequestDetailViewModel {
             }
 
             let now = Date()
-            let update = RequestStatusUpdate(
-                status: nextStatus.rawValue,
-                updatedAt: now,
-                completedAt: nextStatus == .completed ? now : nil
-            )
 
             if nextStatus == .inProgress {
                 try await supabase
@@ -409,42 +404,29 @@ final class RequestDetailViewModel {
                     .eq("id", value: assignment.id.uuidString)
                     .eq("status", value: currentStatus.rawValue)
                     .execute()
+
+                try? await supabase
+                    .from("help_requests")
+                    .update(
+                        RequestStatusUpdate(
+                            status: nextStatus.rawValue,
+                            updatedAt: now,
+                            completedAt: nil
+                        )
+                    )
+                    .eq("id", value: id.uuidString)
+                    .in("status", values: [
+                        HelpRequestStatus.open.rawValue,
+                        HelpRequestStatus.confirmed.rawValue,
+                        HelpRequestStatus.inProgress.rawValue
+                    ])
+                    .execute()
             } else {
                 try await supabase
-                    .from("help_request_volunteers")
-                    .update(
-                        VolunteerAssignmentCompletionUpdate(
-                            status: nextStatus.rawValue,
-                            completedAt: now,
-                            updatedAt: now
-                        )
+                    .rpc(
+                        "complete_my_volunteer_task",
+                        params: CompleteVolunteerTaskParams(requestId: id)
                     )
-                    .eq("id", value: assignment.id.uuidString)
-                    .eq("status", value: currentStatus.rawValue)
-                    .execute()
-            }
-
-            try? await supabase
-                .from("help_requests")
-                .update(update)
-                .eq("id", value: id.uuidString)
-                .in("status", values: [
-                    HelpRequestStatus.open.rawValue,
-                    HelpRequestStatus.confirmed.rawValue,
-                    HelpRequestStatus.inProgress.rawValue
-                ])
-                .execute()
-
-            if nextStatus == .completed {
-                try? await supabase
-                    .from("profiles")
-                    .update(
-                        CompletedVolunteerProfileUpdate(
-                            role: UserRole.citizen.rawValue,
-                            availabilityStatus: VolunteerAvailability.available.rawValue
-                        )
-                    )
-                    .eq("id", value: currentUser.id.uuidString)
                     .execute()
             }
 
@@ -666,24 +648,10 @@ private struct VolunteerAssignmentStartUpdate: Encodable {
     }
 }
 
-private struct VolunteerAssignmentCompletionUpdate: Encodable {
-    let status: String
-    let completedAt: Date
-    let updatedAt: Date
+private struct CompleteVolunteerTaskParams: Encodable {
+    let requestId: UUID
 
     enum CodingKeys: String, CodingKey {
-        case status
-        case completedAt = "completed_at"
-        case updatedAt = "updated_at"
-    }
-}
-
-private struct CompletedVolunteerProfileUpdate: Encodable {
-    let role: String
-    let availabilityStatus: String
-
-    enum CodingKeys: String, CodingKey {
-        case role
-        case availabilityStatus = "availability_status"
+        case requestId = "p_request_id"
     }
 }
