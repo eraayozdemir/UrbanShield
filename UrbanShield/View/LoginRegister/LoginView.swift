@@ -49,10 +49,18 @@ struct LoginView: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
 
                     if let error = viewModel.errorMessage {
-                        Text(error)
-                            .foregroundStyle(.red)
-                            .font(.caption)
-                            .multilineTextAlignment(.center)
+                        Label {
+                            Text(error)
+                                .font(.caption.weight(.medium))
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                        }
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(Color.red.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
 
                     Button {
@@ -93,6 +101,13 @@ struct LoginView: View {
             }
             .navigationDestination(isPresented: $showForgotPassword) {
                 ForgotPasswordView(email: viewModel.email)
+            }
+            .task(id: viewModel.errorMessage) {
+                guard let error = viewModel.errorMessage else { return }
+                try? await Task.sleep(for: .seconds(4))
+                if viewModel.errorMessage == error {
+                    viewModel.errorMessage = nil
+                }
             }
         }
     }

@@ -14,6 +14,7 @@ struct User: Equatable, Sendable {
     let role: UserRole
     let availabilityStatus: VolunteerAvailability
     let volunteerSkills: [VolunteerSkill]
+    let isSuspended: Bool
     let createdAt: Date
 }
 

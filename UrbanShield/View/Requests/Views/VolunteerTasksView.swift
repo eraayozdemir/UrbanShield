@@ -71,6 +71,8 @@ struct VolunteerTasksView: View {
         .overlay(alignment: .bottom) {
             if let error = viewModel.errorMessage {
                 RequestErrorBanner(message: error)
+            } else if let cacheMessage = viewModel.cacheMessage {
+                RequestInfoBanner(message: cacheMessage, color: .orange)
             }
         }
         .task {

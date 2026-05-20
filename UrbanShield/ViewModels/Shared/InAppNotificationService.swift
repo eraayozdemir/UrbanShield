@@ -35,23 +35,18 @@ enum InAppNotificationService {
         reportId: UUID? = nil,
         announcementId: UUID? = nil
     ) async throws {
-        try await supabase
-            .from("notifications")
-            .insert(
-                InAppNotificationInsert(
-                    userId: userId,
-                    actorId: actorId,
-                    title: title,
-                    message: message,
-                    category: category.rawValue,
-                    linkType: linkType?.rawValue,
-                    linkId: linkId,
-                    requestId: requestId,
-                    reportId: reportId,
-                    announcementId: announcementId
-                )
-            )
-            .execute()
+        try await notifyUsers(
+            userIds: [userId],
+            actorId: actorId,
+            title: title,
+            message: message,
+            category: category,
+            linkType: linkType,
+            linkId: linkId,
+            requestId: requestId,
+            reportId: reportId,
+            announcementId: announcementId
+        )
     }
 
     @MainActor
@@ -70,24 +65,22 @@ enum InAppNotificationService {
         let uniqueUserIds = Array(Set(userIds))
         guard !uniqueUserIds.isEmpty else { return }
 
-        let rows = uniqueUserIds.map {
-            InAppNotificationInsert(
-                userId: $0,
-                actorId: actorId,
-                title: title,
-                message: message,
-                category: category.rawValue,
-                linkType: linkType?.rawValue,
-                linkId: linkId,
-                requestId: requestId,
-                reportId: reportId,
-                announcementId: announcementId
-            )
-        }
-
         try await supabase
-            .from("notifications")
-            .insert(rows)
+            .rpc(
+                "create_in_app_notifications",
+                params: InAppNotificationParams(
+                    userIds: uniqueUserIds,
+                    actorId: actorId,
+                    title: title,
+                    message: message,
+                    category: category.rawValue,
+                    linkType: linkType?.rawValue,
+                    linkId: linkId,
+                    requestId: requestId,
+                    reportId: reportId,
+                    announcementId: announcementId
+                )
+            )
             .execute()
     }
 
@@ -187,8 +180,8 @@ private struct NotificationRoleRecipientsParams: Encodable {
     }
 }
 
-private struct InAppNotificationInsert: Encodable {
-    let userId: UUID
+private struct InAppNotificationParams: Encodable {
+    let userIds: [UUID]
     let actorId: UUID?
     let title: String
     let message: String
@@ -200,16 +193,16 @@ private struct InAppNotificationInsert: Encodable {
     let announcementId: UUID?
 
     enum CodingKeys: String, CodingKey {
-        case userId = "user_id"
-        case actorId = "actor_id"
-        case title
-        case message
-        case category
-        case linkType = "link_type"
-        case linkId = "link_id"
-        case requestId = "request_id"
-        case reportId = "report_id"
-        case announcementId = "announcement_id"
+        case userIds = "p_user_ids"
+        case actorId = "p_actor_id"
+        case title = "p_title"
+        case message = "p_message"
+        case category = "p_category"
+        case linkType = "p_link_type"
+        case linkId = "p_link_id"
+        case requestId = "p_request_id"
+        case reportId = "p_report_id"
+        case announcementId = "p_announcement_id"
     }
 }
 

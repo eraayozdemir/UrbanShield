@@ -14,15 +14,23 @@ final class VolunteerTasksViewModel {
     var tasks: [HelpRequestRecord] = []
     var isLoading: Bool = false
     var errorMessage: String?
+    var cacheMessage: String?
     private let realtimeSubscription = RealtimeRefreshSubscription()
 
     func loadTasks(volunteerId: UUID?) async {
         errorMessage = nil
+        cacheMessage = nil
 
         guard let volunteerId else {
             errorMessage = "You must be signed in to view volunteer tasks."
             tasks = []
             return
+        }
+
+        let cacheKey = "volunteer-tasks.\(volunteerId.uuidString)"
+        if tasks.isEmpty, let cached = OfflineCacheStore.load([HelpRequestRecord].self, forKey: cacheKey) {
+            tasks = cached.value
+            cacheMessage = cachedMessage(savedAt: cached.savedAt)
         }
 
         isLoading = true
@@ -59,10 +67,17 @@ final class VolunteerTasksViewModel {
             tasks = assignments.compactMap { assignment in
                 requestsById[assignment.requestId]?.applyingVolunteerAssignment(assignment)
             }
+            cacheMessage = nil
+            OfflineCacheStore.save(tasks, forKey: cacheKey)
         } catch where error.isCancellation {
             return
         } catch {
-            errorMessage = error.localizedDescription
+            if let cached = OfflineCacheStore.load([HelpRequestRecord].self, forKey: cacheKey) {
+                tasks = cached.value
+                cacheMessage = cachedMessage(savedAt: cached.savedAt)
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -90,5 +105,9 @@ final class VolunteerTasksViewModel {
         Task {
             await realtimeSubscription.stop()
         }
+    }
+
+    private func cachedMessage(savedAt: Date) -> String {
+        "Offline mode: showing saved volunteer tasks from \(savedAt.formatted(date: .abbreviated, time: .shortened))."
     }
 }

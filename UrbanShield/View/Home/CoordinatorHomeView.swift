@@ -45,7 +45,7 @@ struct CoordinatorHomeView: View {
             .tag(CoordinatorTab.tools)
 
             NavigationStack {
-                CoordinatorSettingsView(sessionViewModel: sessionViewModel)
+                ProfileView(sessionViewModel: sessionViewModel)
             }
             .tabItem {
                 Label(CoordinatorTab.profile.title, systemImage: CoordinatorTab.profile.systemImage)
@@ -81,65 +81,5 @@ private enum CoordinatorTab: Hashable {
         case .tools: return "cross.case.circle.fill"
         case .profile: return "person.crop.circle.fill"
         }
-    }
-}
-
-private struct CoordinatorSettingsView: View {
-    let sessionViewModel: AuthSessionViewModel
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                RequestCard {
-                    HStack(alignment: .top, spacing: 14) {
-                        Image(systemName: "person.crop.circle.badge.checkmark")
-                            .font(.title2)
-                            .foregroundStyle(.white)
-                            .frame(width: 50, height: 50)
-                            .background(Color.orange)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Coordinator Profile")
-                                .font(.title2.bold())
-
-                            Text("Use the request and volunteer dashboards to prioritize emergencies and coordinate active helpers.")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                NavigationLink {
-                    ProfileView(sessionViewModel: sessionViewModel)
-                } label: {
-                    Label("Open Profile", systemImage: "person.crop.circle.fill")
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: 50)
-                }
-                .buttonStyle(.bordered)
-
-                NavigationLink {
-                    NotificationsView(sessionViewModel: sessionViewModel)
-                } label: {
-                    Label("Open Notifications", systemImage: "bell.badge.fill")
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: 50)
-                }
-                .buttonStyle(.bordered)
-
-                Button(role: .destructive) {
-                    Task { await sessionViewModel.signOut() }
-                } label: {
-                    Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: 50)
-                }
-                .buttonStyle(.bordered)
-            }
-            .padding(16)
-        }
-        .background(RequestUI.background)
-        .navigationTitle("Coordinator")
     }
 }

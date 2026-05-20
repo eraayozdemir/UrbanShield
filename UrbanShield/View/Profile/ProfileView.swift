@@ -89,7 +89,18 @@ struct ProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let user = currentUser {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if user.role == .coordinator || user.role == .admin {
+                        NavigationLink {
+                            NotificationsView(sessionViewModel: sessionViewModel)
+                        } label: {
+                            Image(systemName: "bell.badge.fill")
+                                .font(.headline)
+                                .foregroundStyle(.orange)
+                        }
+                        .accessibilityLabel("Notifications")
+                    }
+
                     NavigationLink {
                         ProfileSettingsView(sessionViewModel: sessionViewModel, user: user)
                     } label: {

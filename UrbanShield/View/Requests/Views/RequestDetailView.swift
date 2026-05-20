@@ -34,17 +34,7 @@ struct RequestDetailView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         detailHeader(request)
 
-                        RequestCard {
-                            RequestSectionTitle(title: "Status", systemImage: "checklist")
-
-                            HStack(spacing: 10) {
-                                RequestStatusChip(status: request.statusValue)
-                                RequestPriorityChip(priority: request.priorityValue)
-                                RequestUrgencyChip(urgency: request.urgencyValue)
-                            }
-
-                            RequestProgressView(status: request.statusValue)
-                        }
+                        statusSection(request)
 
                         RequestCard {
                             RequestSectionTitle(title: "Description", systemImage: "text.alignleft")
@@ -186,6 +176,8 @@ struct RequestDetailView: View {
         .overlay(alignment: .bottom) {
             if let error = viewModel.errorMessage {
                 RequestErrorBanner(message: error)
+            } else if let cacheMessage = viewModel.cacheMessage {
+                RequestInfoBanner(message: cacheMessage, color: .orange)
             } else if let success = viewModel.successMessage {
                 RequestInfoBanner(message: success, color: .green)
             }
@@ -258,8 +250,45 @@ struct RequestDetailView: View {
         coordinate.formatted(.number.precision(.fractionLength(4...6)))
     }
 
+    private func statusSection(_ request: HelpRequestRecord) -> some View {
+        RequestCard {
+            RequestSectionTitle(title: "Status", systemImage: "checklist")
+
+            HStack(spacing: 10) {
+                RequestStatusChip(status: request.statusValue)
+                RequestPriorityChip(priority: request.priorityValue)
+                RequestUrgencyChip(urgency: request.urgencyValue)
+            }
+
+            if shouldShowCoordinatorControls {
+                CoordinatorDetailControls(
+                    request: request,
+                    statusTargets: viewModel.allowedCoordinatorStatusTargets(for: request),
+                    isUpdating: viewModel.isUpdatingCoordinatorControls,
+                    onStatusChange: { status in
+                        Task {
+                            await viewModel.updateCoordinatorStatus(status: status, currentUser: currentUser)
+                            await sessionViewModel.refreshCurrentUser()
+                        }
+                    },
+                    onPriorityChange: { priority in
+                        Task {
+                            await viewModel.updateCoordinatorPriority(priority: priority, currentUser: currentUser)
+                        }
+                    }
+                )
+            }
+
+            RequestProgressView(status: request.statusValue)
+        }
+    }
+
     private func shouldShowCitizenCancel(for request: HelpRequestRecord) -> Bool {
         request.citizenId == currentUser?.id && request.statusValue.canBeCancelled
+    }
+
+    private var shouldShowCoordinatorControls: Bool {
+        currentUser?.role == .coordinator || currentUser?.role == .admin
     }
 
     private func shouldShowCitizenControls(for request: HelpRequestRecord) -> Bool {
@@ -295,7 +324,10 @@ struct RequestDetailView: View {
     }
 
     private func evidenceSection(_ request: HelpRequestRecord) -> some View {
-        RequestCard {
+        let isUploadingEvidence = viewModel.isUploadingEvidence
+        let canUploadMoreEvidence = viewModel.canUploadMoreEvidence
+
+        return RequestCard {
             HStack(alignment: .firstTextBaseline) {
                 RequestSectionTitle(title: "Evidence", systemImage: "photo.on.rectangle.angled")
                 Spacer()
@@ -306,7 +338,7 @@ struct RequestDetailView: View {
                         matching: .images,
                         photoLibrary: .shared()
                     ) {
-                        if viewModel.isUploadingEvidence {
+                        if isUploadingEvidence {
                             ProgressView()
                         } else {
                             Label("Add Photo", systemImage: "plus")
@@ -314,7 +346,7 @@ struct RequestDetailView: View {
                         }
                     }
                     .buttonStyle(.bordered)
-                    .disabled(viewModel.isUploadingEvidence || !viewModel.canUploadMoreEvidence)
+                    .disabled(isUploadingEvidence || !canUploadMoreEvidence)
                 }
             }
 
@@ -330,7 +362,7 @@ struct RequestDetailView: View {
                 }
             }
 
-            if shouldShowEvidenceUpload(for: request), !viewModel.canUploadMoreEvidence {
+            if shouldShowEvidenceUpload(for: request), !canUploadMoreEvidence {
                 Label("Evidence upload limit reached for this request.", systemImage: "info.circle.fill")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -360,6 +392,122 @@ struct RequestDetailView: View {
 
             selectedEvidenceItem = nil
         }
+    }
+}
+
+private struct CoordinatorDetailControls: View {
+    let request: HelpRequestRecord
+    let statusTargets: [HelpRequestStatus]
+    let isUpdating: Bool
+    let onStatusChange: (HelpRequestStatus) -> Void
+    let onPriorityChange: (HelpRequestPriority) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Coordinator Controls")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 10) {
+                Menu {
+                    if statusTargets.isEmpty {
+                        Text("No available status changes")
+                    } else {
+                        ForEach(statusTargets) { status in
+                            Button {
+                                onStatusChange(status)
+                            } label: {
+                                Label(status.title, systemImage: statusIcon(for: status))
+                            }
+                        }
+                    }
+                } label: {
+                    CoordinatorControlLabel(
+                        title: "Change Status",
+                        value: request.statusValue.title,
+                        systemImage: "arrow.triangle.2.circlepath",
+                        color: RequestUI.statusColor(request.statusValue),
+                        isUpdating: isUpdating
+                    )
+                }
+                .disabled(isUpdating || statusTargets.isEmpty)
+
+                Menu {
+                    ForEach(HelpRequestPriority.allCases) { priority in
+                        Button {
+                            onPriorityChange(priority)
+                        } label: {
+                            Label(priority.title, systemImage: priority == request.priorityValue ? "checkmark" : "flag")
+                        }
+                    }
+                } label: {
+                    CoordinatorControlLabel(
+                        title: "Priority",
+                        value: request.priorityValue.title,
+                        systemImage: "flag.fill",
+                        color: RequestUI.priorityColor(request.priorityValue),
+                        isUpdating: isUpdating
+                    )
+                }
+                .disabled(isUpdating)
+            }
+        }
+        .padding(12)
+        .background(Color(.tertiarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func statusIcon(for status: HelpRequestStatus) -> String {
+        switch status {
+        case .open: return "circle"
+        case .confirmed: return "checkmark.shield.fill"
+        case .inProgress: return "figure.run"
+        case .completed: return "checkmark.circle.fill"
+        case .cancelled: return "xmark.circle.fill"
+        }
+    }
+}
+
+private struct CoordinatorControlLabel: View {
+    let title: String
+    let value: String
+    let systemImage: String
+    let color: Color
+    let isUpdating: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if isUpdating {
+                ProgressView()
+                    .frame(width: 18, height: 18)
+            } else {
+                Image(systemName: systemImage)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(color)
+                    .frame(width: 18, height: 18)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.down")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+        .background(color.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 

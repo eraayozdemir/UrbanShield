@@ -122,34 +122,60 @@ struct RequestPriorityChip: View {
 
 struct RequestErrorBanner: View {
     let message: String
+    @State private var isVisible = true
 
     var body: some View {
-        Label(message, systemImage: "exclamationmark.triangle.fill")
-            .font(.footnote)
-            .foregroundStyle(.white)
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.red)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .padding(.horizontal, 16)
-            .padding(.bottom, 12)
+        Group {
+            if isVisible {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.white)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.red)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .task(id: message) {
+            isVisible = true
+            try? await Task.sleep(for: .seconds(3))
+            withAnimation(.easeInOut(duration: 0.25)) {
+                isVisible = false
+            }
+        }
     }
 }
 
 struct RequestInfoBanner: View {
     let message: String
     let color: Color
+    @State private var isVisible = true
 
     var body: some View {
-        Label(message, systemImage: "checkmark.circle.fill")
-            .font(.footnote)
-            .foregroundStyle(.white)
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(color)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .padding(.horizontal, 16)
-            .padding(.bottom, 12)
+        Group {
+            if isVisible {
+                Label(message, systemImage: "checkmark.circle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.white)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(color)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .task(id: message) {
+            isVisible = true
+            try? await Task.sleep(for: .seconds(3))
+            withAnimation(.easeInOut(duration: 0.25)) {
+                isVisible = false
+            }
+        }
     }
 }
 

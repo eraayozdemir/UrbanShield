@@ -347,6 +347,8 @@ private struct VolunteerProfileSettingsView: View {
 private struct SignOutSettingsView: View {
     let sessionViewModel: AuthSessionViewModel
 
+    @State private var showSignOutConfirmation = false
+
     var body: some View {
         Form {
             Section {
@@ -361,7 +363,7 @@ private struct SignOutSettingsView: View {
 
             Section {
                 Button(role: .destructive) {
-                    Task { await sessionViewModel.signOut() }
+                    showSignOutConfirmation = true
                 } label: {
                     SettingsActionRow(
                         title: "Sign Out",
@@ -374,6 +376,18 @@ private struct SignOutSettingsView: View {
         }
         .navigationTitle("Sign Out")
         .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(
+            "Sign out?",
+            isPresented: $showSignOutConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Sign Out", role: .destructive) {
+                Task { await sessionViewModel.signOut() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You will need to sign in again to access UrbanShield.")
+        }
     }
 }
 

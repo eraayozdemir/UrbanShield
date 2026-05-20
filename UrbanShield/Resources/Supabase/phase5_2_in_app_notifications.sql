@@ -1,6 +1,4 @@
 -- Phase 5.2: In-app notification center.
---
--- Run this in Supabase SQL Editor before testing notification inserts.
 
 create table if not exists public.notifications (
     id uuid primary key default gen_random_uuid(),
@@ -56,15 +54,108 @@ to authenticated
 using (user_id = auth.uid())
 with check (user_id = auth.uid());
 
--- The app writes notifications for other users after a request/report/action.
--- This is intentionally broader than ownership because the client creates
--- recipient notifications during user-facing flows.
+-- Direct table inserts stay ownership-scoped. Cross-user notifications are
+-- created through create_in_app_notifications(), where values are validated.
 drop policy if exists "authenticated users can insert notifications" on public.notifications;
-create policy "authenticated users can insert notifications"
+drop policy if exists "users can insert own notifications" on public.notifications;
+create policy "users can insert own notifications"
 on public.notifications
 for insert
 to authenticated
-with check (auth.uid() is not null);
+with check (
+    user_id = auth.uid()
+    and (
+        actor_id is null
+        or actor_id = auth.uid()
+    )
+);
+
+create or replace function public.create_in_app_notifications(
+    p_user_ids uuid[],
+    p_actor_id uuid default null,
+    p_title text default '',
+    p_message text default '',
+    p_category text default 'request',
+    p_link_type text default null,
+    p_link_id uuid default null,
+    p_request_id uuid default null,
+    p_report_id uuid default null,
+    p_announcement_id uuid default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+    if auth.uid() is null then
+        raise exception 'You must be signed in to create notifications.';
+    end if;
+
+    if p_actor_id is not null
+       and p_actor_id <> auth.uid()
+       and public.current_app_role() not in ('coordinator', 'admin') then
+        raise exception 'Notification actor must match the signed-in user.';
+    end if;
+
+    if nullif(trim(p_title), '') is null
+       or nullif(trim(p_message), '') is null then
+        raise exception 'Notification title and message are required.';
+    end if;
+
+    if p_category not in ('request', 'assignment', 'announcement', 'report', 'moderation', 'coordinator') then
+        raise exception 'Invalid notification category.';
+    end if;
+
+    if p_link_type is not null
+       and p_link_type not in ('request', 'report', 'announcement') then
+        raise exception 'Invalid notification link type.';
+    end if;
+
+    if p_user_ids is null or array_length(p_user_ids, 1) is null then
+        return;
+    end if;
+
+    insert into public.notifications (
+        user_id,
+        actor_id,
+        title,
+        message,
+        category,
+        link_type,
+        link_id,
+        request_id,
+        report_id,
+        announcement_id
+    )
+    select distinct
+        recipient.id,
+        p_actor_id,
+        trim(p_title),
+        trim(p_message),
+        p_category,
+        p_link_type,
+        p_link_id,
+        p_request_id,
+        p_report_id,
+        p_announcement_id
+    from unnest(p_user_ids) as recipient(id)
+    join public.profiles p on p.id = recipient.id;
+end;
+$$;
+
+grant execute on function public.create_in_app_notifications(
+    uuid[],
+    uuid,
+    text,
+    text,
+    text,
+    text,
+    uuid,
+    uuid,
+    uuid,
+    uuid
+) to authenticated;
 
 create or replace function public.notification_recipient_ids_for_roles(
     p_roles text[],

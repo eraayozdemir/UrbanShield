@@ -25,7 +25,14 @@ final class AuthService: Sendable {
 
     func signIn(email: String, password: String) async throws -> User {
         let response = try await supabase.auth.signIn(email: email, password: password)
-        return try await fetchProfile(userId: response.user.id)
+        let user = try await fetchProfile(userId: response.user.id)
+
+        if user.isSuspended {
+            try? await signOut()
+            throw AppError.authFailed("This account has been suspended. Please contact an administrator.")
+        }
+
+        return user
     }
 
     func signOut() async throws {
@@ -98,7 +105,14 @@ final class AuthService: Sendable {
     /// Returns nil when no session exists (app launch / logged out).
     func currentUser() async throws -> User? {
         guard let session = try? await supabase.auth.session else { return nil }
-        return try? await fetchProfile(userId: session.user.id)
+        guard let user = try? await fetchProfile(userId: session.user.id) else { return nil }
+
+        if user.isSuspended {
+            try? await signOut()
+            return nil
+        }
+
+        return user
     }
 
     // MARK: - Profile (private)
@@ -135,6 +149,7 @@ private struct ProfileDTO: Codable {
     let role: String
     let availabilityStatus: String?
     let volunteerSkills: [String]?
+    let isSuspended: Bool?
     let createdAt: Date
 
     enum CodingKeys: String, CodingKey {
@@ -142,6 +157,7 @@ private struct ProfileDTO: Codable {
         case fullName   = "full_name"
         case availabilityStatus = "availability_status"
         case volunteerSkills = "volunteer_skills"
+        case isSuspended = "is_suspended"
         case createdAt  = "created_at"
     }
 
@@ -153,6 +169,7 @@ private struct ProfileDTO: Codable {
             role:       UserRole(rawValue: role) ?? .citizen,
             availabilityStatus: VolunteerAvailability(rawValue: availabilityStatus ?? "") ?? .available,
             volunteerSkills: (volunteerSkills ?? []).compactMap(VolunteerSkill.init(rawValue:)),
+            isSuspended: isSuspended ?? false,
             createdAt:  createdAt
         )
     }

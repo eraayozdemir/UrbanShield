@@ -16,16 +16,24 @@ final class NearbyRequestsViewModel {
     var confirmingRequestId: UUID?
     var errorMessage: String?
     var successMessage: String?
+    var cacheMessage: String?
     private let realtimeSubscription = RealtimeRefreshSubscription()
     private var pollingTask: Task<Void, Never>?
 
     func loadOpenRequests(currentUserId: UUID?) async {
         errorMessage = nil
+        cacheMessage = nil
 
         guard let currentUserId else {
             errorMessage = "You must be signed in to view nearby requests."
             requests = []
             return
+        }
+
+        let cacheKey = "nearby-requests.\(currentUserId.uuidString)"
+        if requests.isEmpty, let cached = OfflineCacheStore.load([HelpRequestRecord].self, forKey: cacheKey) {
+            requests = cached.value
+            cacheMessage = cachedMessage(savedAt: cached.savedAt)
         }
 
         isLoading = true
@@ -60,16 +68,24 @@ final class NearbyRequestsViewModel {
             requests = openRequests.filter { request in
                 request.statusValue.acceptsVolunteers && !acceptedRequestIds.contains(request.id)
             }
+            cacheMessage = nil
+            OfflineCacheStore.save(requests, forKey: cacheKey)
         } catch where error.isCancellation {
             return
         } catch {
-            errorMessage = error.localizedDescription
+            if let cached = OfflineCacheStore.load([HelpRequestRecord].self, forKey: cacheKey) {
+                requests = cached.value
+                cacheMessage = cachedMessage(savedAt: cached.savedAt)
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
     func confirmRequest(_ request: HelpRequestRecord, volunteer: User?) async -> Bool {
         errorMessage = nil
         successMessage = nil
+        cacheMessage = nil
 
         guard let volunteer else {
             errorMessage = "You must be signed in to confirm a request."
@@ -212,6 +228,10 @@ final class NearbyRequestsViewModel {
         Task {
             await realtimeSubscription.stop()
         }
+    }
+
+    private func cachedMessage(savedAt: Date) -> String {
+        "Offline mode: showing saved nearby requests from \(savedAt.formatted(date: .abbreviated, time: .shortened))."
     }
 }
 

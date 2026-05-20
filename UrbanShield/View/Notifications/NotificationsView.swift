@@ -69,6 +69,8 @@ struct NotificationsView: View {
         .overlay(alignment: .bottom) {
             if let message = viewModel.errorMessage {
                 RequestErrorBanner(message: message)
+            } else if let message = viewModel.cacheMessage {
+                RequestInfoBanner(message: message, color: .orange)
             } else if let message = viewModel.successMessage {
                 RequestInfoBanner(message: message, color: .green)
             }

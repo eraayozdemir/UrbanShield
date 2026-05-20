@@ -12,6 +12,7 @@ struct ProfileUserRecord: Codable, Identifiable, Equatable {
     let role: String
     let availabilityStatus: String?
     let volunteerSkills: [String]?
+    let isSuspended: Bool?
     let createdAt: Date
 
     enum CodingKeys: String, CodingKey {
@@ -19,6 +20,7 @@ struct ProfileUserRecord: Codable, Identifiable, Equatable {
         case fullName = "full_name"
         case availabilityStatus = "availability_status"
         case volunteerSkills = "volunteer_skills"
+        case isSuspended = "is_suspended"
         case createdAt = "created_at"
     }
 
@@ -28,6 +30,10 @@ struct ProfileUserRecord: Codable, Identifiable, Equatable {
 
     var availabilityValue: VolunteerAvailability {
         VolunteerAvailability(rawValue: availabilityStatus ?? "") ?? .available
+    }
+
+    var isSuspendedValue: Bool {
+        isSuspended ?? false
     }
 
     var skillsValue: [VolunteerSkill] {

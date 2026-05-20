@@ -14,7 +14,7 @@ final class RequestDetailViewModel {
 
     private let evidenceBucket = "request-evidence"
     private let maxEvidenceCount = 3
-    private let maxEvidenceBytes = 1_000_000
+    private let maxEvidenceBytes = 5_000_000
     private let realtimeSubscription = RealtimeRefreshSubscription()
 
     var request: HelpRequestRecord?
@@ -22,10 +22,12 @@ final class RequestDetailViewModel {
     var isLoading: Bool = false
     var isCancelling: Bool = false
     var isUpdatingStatus: Bool = false
+    var isUpdatingCoordinatorControls: Bool = false
     var isSavingUpdate: Bool = false
     var isUploadingEvidence: Bool = false
     var errorMessage: String?
     var successMessage: String?
+    var cacheMessage: String?
 
     var editDescription = ""
     var editUrgency: HelpRequestUrgency = .medium
@@ -38,6 +40,13 @@ final class RequestDetailViewModel {
 
     func loadRequest(id: UUID, currentUserId: UUID? = nil) async {
         errorMessage = nil
+        cacheMessage = nil
+        let cacheKey = requestDetailCacheKey(id: id, currentUserId: currentUserId)
+        if request == nil, let cached = OfflineCacheStore.load(HelpRequestRecord.self, forKey: cacheKey) {
+            request = cached.value
+            cacheMessage = cachedMessage(savedAt: cached.savedAt)
+        }
+
         isLoading = true
         defer { isLoading = false }
 
@@ -63,11 +72,21 @@ final class RequestDetailViewModel {
                 request = loadedRequest
             }
 
+            if let request {
+                OfflineCacheStore.save(request, forKey: cacheKey)
+            }
+            cacheMessage = nil
+
             await loadEvidence(requestId: id)
         } catch where error.isCancellation {
             return
         } catch {
-            errorMessage = error.localizedDescription
+            if let cached = OfflineCacheStore.load(HelpRequestRecord.self, forKey: cacheKey) {
+                request = cached.value
+                cacheMessage = cachedMessage(savedAt: cached.savedAt)
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -223,7 +242,10 @@ final class RequestDetailViewModel {
         do {
             let jpegData = try compressedJPEGData(from: imageData)
             let fileName = sanitizedEvidenceFileName(originalFileName)
-            let filePath = "\(request.id.uuidString)/\(currentUser.id.uuidString)/\(UUID().uuidString)-\(fileName)"
+            let requestPathId = request.id.uuidString.lowercased()
+            let uploaderPathId = currentUser.id.uuidString.lowercased()
+            let evidencePathId = UUID().uuidString.lowercased()
+            let filePath = "\(requestPathId)/\(uploaderPathId)/\(evidencePathId)-\(fileName)"
 
             try await supabase.storage
                 .from(evidenceBucket)
@@ -237,22 +259,23 @@ final class RequestDetailViewModel {
                     )
                 )
 
-            let inserted: RequestEvidenceRecord = try await supabase
-                .from("request_evidence")
-                .insert(
-                    RequestEvidenceInsert(
+            let insertedRows: [RequestEvidenceRecord] = try await supabase
+                .rpc(
+                    "create_request_evidence_record",
+                    params: RequestEvidenceCreateParams(
                         requestId: request.id,
-                        uploadedBy: currentUser.id,
                         filePath: filePath,
                         fileName: fileName,
                         contentType: "image/jpeg",
                         fileSize: jpegData.count
                     )
                 )
-                .select()
-                .single()
                 .execute()
                 .value
+
+            guard let inserted = insertedRows.first else {
+                throw EvidenceUploadError.metadataNotCreated
+            }
 
             let signedURL = try? await supabase.storage
                 .from(evidenceBucket)
@@ -277,7 +300,7 @@ final class RequestDetailViewModel {
         } catch where error.isCancellation {
             return
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = evidenceUploadMessage(for: error)
         }
     }
 
@@ -358,6 +381,185 @@ final class RequestDetailViewModel {
             to: .completed,
             errorText: "Only in-progress requests can be completed."
         )
+    }
+
+    func allowedCoordinatorStatusTargets(for request: HelpRequestRecord) -> [HelpRequestStatus] {
+        switch request.statusValue {
+        case .open:
+            return [.cancelled]
+        case .confirmed:
+            return [.inProgress, .cancelled]
+        case .inProgress:
+            return [.completed, .cancelled]
+        case .completed, .cancelled:
+            return []
+        }
+    }
+
+    func updateCoordinatorPriority(priority: HelpRequestPriority, currentUser: User?) async {
+        errorMessage = nil
+        successMessage = nil
+
+        guard let currentUser, currentUser.role == .coordinator || currentUser.role == .admin else {
+            errorMessage = "Only coordinators can update request priority."
+            return
+        }
+
+        guard let request else {
+            errorMessage = "Request must be loaded before updating priority."
+            return
+        }
+
+        guard request.priorityValue != priority else { return }
+
+        isUpdatingCoordinatorControls = true
+        defer { isUpdatingCoordinatorControls = false }
+
+        do {
+            let updatedRequest: HelpRequestRecord = try await supabase
+                .from("help_requests")
+                .update(
+                    RequestDetailCoordinatorPriorityUpdate(
+                        priorityLevel: priority.rawValue,
+                        updatedAt: Date()
+                    )
+                )
+                .eq("id", value: request.id.uuidString)
+                .select()
+                .single()
+                .execute()
+                .value
+
+            self.request = updatedRequest
+
+            try await insertCoordinationLog(
+                requestId: request.id,
+                coordinatorId: currentUser.id,
+                actionType: .priorityUpdated,
+                oldValue: request.priorityValue.rawValue,
+                newValue: priority.rawValue,
+                message: "Priority changed from \(request.priorityValue.title) to \(priority.title)."
+            )
+
+            try? await ActivityLogger.log(
+                actor: currentUser,
+                action: .requestPriorityUpdated,
+                targetType: .request,
+                targetId: request.id,
+                requestId: request.id,
+                message: "Priority changed from \(request.priorityValue.title) to \(priority.title).",
+                metadata: [
+                    "old_priority": request.priorityValue.rawValue,
+                    "new_priority": priority.rawValue
+                ]
+            )
+
+            try? await InAppNotificationService.notifyUser(
+                userId: request.citizenId,
+                actorId: currentUser.id,
+                title: "Request priority updated",
+                message: "Your \(request.requestTypeValue.title) request priority is now \(priority.title).",
+                category: .coordinator,
+                linkType: .request,
+                linkId: request.id,
+                requestId: request.id
+            )
+
+            successMessage = "Priority updated to \(priority.title)."
+        } catch where error.isCancellation {
+            return
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func updateCoordinatorStatus(status: HelpRequestStatus, currentUser: User?) async {
+        errorMessage = nil
+        successMessage = nil
+
+        guard let currentUser, currentUser.role == .coordinator || currentUser.role == .admin else {
+            errorMessage = "Only coordinators can update request status."
+            return
+        }
+
+        guard let request else {
+            errorMessage = "Request must be loaded before updating status."
+            return
+        }
+
+        guard allowedCoordinatorStatusTargets(for: request).contains(status) else {
+            errorMessage = "This status change is not available for the selected request."
+            return
+        }
+
+        isUpdatingCoordinatorControls = true
+        defer { isUpdatingCoordinatorControls = false }
+
+        do {
+            let now = Date()
+            let updatedRequest: HelpRequestRecord = try await supabase
+                .from("help_requests")
+                .update(
+                    RequestDetailCoordinatorStatusUpdate(
+                        status: status.rawValue,
+                        updatedAt: now,
+                        completedAt: status == .completed ? now : nil
+                    )
+                )
+                .eq("id", value: request.id.uuidString)
+                .select()
+                .single()
+                .execute()
+                .value
+
+            try await syncAssignmentsAndVolunteer(for: request, nextStatus: status, updatedAt: now)
+
+            self.request = updatedRequest
+
+            try await insertCoordinationLog(
+                requestId: request.id,
+                coordinatorId: currentUser.id,
+                actionType: .statusUpdated,
+                oldValue: request.statusValue.rawValue,
+                newValue: status.rawValue,
+                message: "Status changed from \(request.statusValue.title) to \(status.title)."
+            )
+
+            try? await ActivityLogger.log(
+                actor: currentUser,
+                action: .requestStatusUpdated,
+                targetType: .request,
+                targetId: request.id,
+                requestId: request.id,
+                message: "Status changed from \(request.statusValue.title) to \(status.title).",
+                metadata: [
+                    "old_status": request.statusValue.rawValue,
+                    "new_status": status.rawValue
+                ]
+            )
+
+            let recipientIds = [
+                request.citizenId,
+                request.volunteerId
+            ].compactMap { $0 }
+
+            try? await InAppNotificationService.notifyUsers(
+                userIds: recipientIds,
+                actorId: currentUser.id,
+                title: "Request status updated",
+                message: "\(request.requestTypeValue.title) request moved to \(status.title).",
+                category: .coordinator,
+                linkType: .request,
+                linkId: request.id,
+                requestId: request.id
+            )
+
+            successMessage = "Status updated to \(status.title)."
+        } catch where error.isCancellation {
+            return
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func updateVolunteerStatus(
@@ -464,6 +666,102 @@ final class RequestDetailViewModel {
         }
     }
 
+    private func syncAssignmentsAndVolunteer(
+        for request: HelpRequestRecord,
+        nextStatus: HelpRequestStatus,
+        updatedAt: Date
+    ) async throws {
+        guard nextStatus == .inProgress || nextStatus == .completed || nextStatus == .cancelled else {
+            return
+        }
+
+        let activeAssignments: [HelpRequestVolunteerRecord] = try await supabase
+            .from("help_request_volunteers")
+            .select()
+            .eq("request_id", value: request.id.uuidString)
+            .in("status", values: [
+                HelpRequestStatus.confirmed.rawValue,
+                HelpRequestStatus.inProgress.rawValue
+            ])
+            .execute()
+            .value
+
+        for assignment in activeAssignments {
+            switch nextStatus {
+            case .inProgress:
+                try await supabase
+                    .from("help_request_volunteers")
+                    .update(
+                        RequestDetailAssignmentStartUpdate(
+                            status: nextStatus.rawValue,
+                            startedAt: updatedAt,
+                            updatedAt: updatedAt
+                        )
+                    )
+                    .eq("id", value: assignment.id.uuidString)
+                    .execute()
+            case .completed:
+                try await supabase
+                    .from("help_request_volunteers")
+                    .update(
+                        RequestDetailAssignmentCompletionUpdate(
+                            status: nextStatus.rawValue,
+                            completedAt: updatedAt,
+                            updatedAt: updatedAt
+                        )
+                    )
+                    .eq("id", value: assignment.id.uuidString)
+                    .execute()
+                try await markVolunteerAvailableIfNeeded(assignment.volunteerId)
+            case .cancelled:
+                try await supabase
+                    .from("help_request_volunteers")
+                    .update(
+                        RequestDetailAssignmentCancellationUpdate(
+                            status: nextStatus.rawValue,
+                            updatedAt: updatedAt
+                        )
+                    )
+                    .eq("id", value: assignment.id.uuidString)
+                    .execute()
+                try await markVolunteerAvailableIfNeeded(assignment.volunteerId)
+            default:
+                break
+            }
+        }
+    }
+
+    private func markVolunteerAvailableIfNeeded(_ volunteerId: UUID) async throws {
+        try await supabase
+            .from("profiles")
+            .update(RequestDetailVolunteerAvailabilityUpdate(availabilityStatus: VolunteerAvailability.available.rawValue))
+            .eq("id", value: volunteerId.uuidString)
+            .execute()
+    }
+
+    private func insertCoordinationLog(
+        requestId: UUID,
+        coordinatorId: UUID,
+        actionType: CoordinationActionType,
+        oldValue: String?,
+        newValue: String?,
+        message: String
+    ) async throws {
+        try await supabase
+            .from("coordination_logs")
+            .insert(
+                RequestDetailCoordinationLogInsert(
+                    requestId: requestId,
+                    coordinatorId: coordinatorId,
+                    actionType: actionType.rawValue,
+                    oldValue: oldValue,
+                    newValue: newValue,
+                    message: message
+                )
+            )
+            .execute()
+    }
+
     private func loadAssignment(requestId: UUID, volunteerId: UUID) async throws -> HelpRequestVolunteerRecord? {
         let assignments: [HelpRequestVolunteerRecord] = try await supabase
             .from("help_request_volunteers")
@@ -507,6 +805,14 @@ final class RequestDetailViewModel {
             evidenceItems = []
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func requestDetailCacheKey(id: UUID, currentUserId: UUID?) -> String {
+        "request-detail.\(id.uuidString).\(currentUserId?.uuidString ?? "anonymous")"
+    }
+
+    private func cachedMessage(savedAt: Date) -> String {
+        "Offline mode: showing saved request detail from \(savedAt.formatted(date: .abbreviated, time: .shortened))."
     }
 
     private func canCurrentCitizenEdit(currentUser: User) -> Bool {
@@ -564,7 +870,46 @@ final class RequestDetailViewModel {
             throw EvidenceUploadError.invalidImage
         }
 
+        guard finalOutput.count <= maxEvidenceBytes else {
+            throw EvidenceUploadError.fileTooLarge(maxMegabytes: maxEvidenceBytes / 1_000_000)
+        }
+
         return finalOutput
+    }
+
+    private func evidenceUploadMessage(for error: Error) -> String {
+        if let localizedError = error as? LocalizedError,
+           let description = localizedError.errorDescription {
+            return description
+        }
+
+        let message = error.localizedDescription
+        let lowercasedMessage = message.lowercased()
+
+        if lowercasedMessage.contains("row-level security")
+            || lowercasedMessage.contains("rls")
+            || lowercasedMessage.contains("permission") {
+            return "You do not have permission to upload evidence for this request. If this is your request or assigned task, run the latest evidence SQL in Supabase."
+        }
+
+        if lowercasedMessage.contains("bucket")
+            || lowercasedMessage.contains("storage") {
+            return "Evidence storage is not ready. Confirm the request-evidence bucket exists in Supabase Storage."
+        }
+
+        if lowercasedMessage.contains("payload")
+            || lowercasedMessage.contains("file size")
+            || lowercasedMessage.contains("too large") {
+            return "Selected photo is too large. Choose a smaller photo or compress it before uploading."
+        }
+
+        if lowercasedMessage.contains("network")
+            || lowercasedMessage.contains("offline")
+            || lowercasedMessage.contains("timed out") {
+            return "Evidence upload needs an internet connection. Please try again when the connection is stable."
+        }
+
+        return "Evidence upload failed: \(message)"
     }
 }
 
@@ -577,9 +922,18 @@ struct RequestEvidenceViewState: Identifiable, Equatable {
 
 private enum EvidenceUploadError: LocalizedError {
     case invalidImage
+    case fileTooLarge(maxMegabytes: Int)
+    case metadataNotCreated
 
     var errorDescription: String? {
-        "Selected photo could not be prepared for upload."
+        switch self {
+        case .invalidImage:
+            return "Selected photo could not be prepared for upload."
+        case .fileTooLarge(let maxMegabytes):
+            return "Selected photo is still larger than \(maxMegabytes) MB after compression. Please choose a smaller photo."
+        case .metadataNotCreated:
+            return "Evidence photo uploaded, but its request record could not be created. Please refresh and try again."
+        }
     }
 }
 
@@ -599,21 +953,19 @@ private struct RequestCitizenUpdate: Encodable {
     }
 }
 
-private struct RequestEvidenceInsert: Encodable {
+private struct RequestEvidenceCreateParams: Encodable {
     let requestId: UUID
-    let uploadedBy: UUID
     let filePath: String
     let fileName: String
     let contentType: String
     let fileSize: Int
 
     enum CodingKeys: String, CodingKey {
-        case requestId = "request_id"
-        case uploadedBy = "uploaded_by"
-        case filePath = "file_path"
-        case fileName = "file_name"
-        case contentType = "content_type"
-        case fileSize = "file_size"
+        case requestId = "p_request_id"
+        case filePath = "p_file_path"
+        case fileName = "p_file_name"
+        case contentType = "p_content_type"
+        case fileSize = "p_file_size"
     }
 }
 
@@ -636,6 +988,88 @@ private struct RequestStatusUpdate: Encodable {
         case status
         case updatedAt = "updated_at"
         case completedAt = "completed_at"
+    }
+}
+
+private struct RequestDetailCoordinatorPriorityUpdate: Encodable {
+    let priorityLevel: String
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case priorityLevel = "priority_level"
+        case updatedAt = "updated_at"
+    }
+}
+
+private struct RequestDetailCoordinatorStatusUpdate: Encodable {
+    let status: String
+    let updatedAt: Date
+    let completedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case updatedAt = "updated_at"
+        case completedAt = "completed_at"
+    }
+}
+
+private struct RequestDetailCoordinationLogInsert: Encodable {
+    let requestId: UUID
+    let coordinatorId: UUID
+    let actionType: String
+    let oldValue: String?
+    let newValue: String?
+    let message: String
+
+    enum CodingKeys: String, CodingKey {
+        case requestId = "request_id"
+        case coordinatorId = "coordinator_id"
+        case actionType = "action_type"
+        case oldValue = "old_value"
+        case newValue = "new_value"
+        case message
+    }
+}
+
+private struct RequestDetailAssignmentStartUpdate: Encodable {
+    let status: String
+    let startedAt: Date
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case startedAt = "started_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+private struct RequestDetailAssignmentCompletionUpdate: Encodable {
+    let status: String
+    let completedAt: Date
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case completedAt = "completed_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+private struct RequestDetailAssignmentCancellationUpdate: Encodable {
+    let status: String
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case updatedAt = "updated_at"
+    }
+}
+
+private struct RequestDetailVolunteerAvailabilityUpdate: Encodable {
+    let availabilityStatus: String
+
+    enum CodingKeys: String, CodingKey {
+        case availabilityStatus = "availability_status"
     }
 }
 

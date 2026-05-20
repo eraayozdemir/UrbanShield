@@ -19,7 +19,7 @@ struct AdminUserManagementView: View {
     }
 
     private var filteredUsers: [ProfileUserRecord] {
-        viewModel.users.filter { selectedRoleFilter.includes($0.roleValue) }
+        viewModel.users.filter { selectedRoleFilter.includes($0) }
     }
 
     var body: some View {
@@ -50,6 +50,15 @@ struct AdminUserManagementView: View {
                                         await viewModel.updateRole(
                                             user: user,
                                             role: role,
+                                            currentUser: currentUser
+                                        )
+                                        await sessionViewModel.refreshCurrentUser()
+                                    }
+                                } onSuspensionChange: { isSuspended in
+                                    Task {
+                                        await viewModel.updateSuspension(
+                                            user: user,
+                                            isSuspended: isSuspended,
                                             currentUser: currentUser
                                         )
                                         await sessionViewModel.refreshCurrentUser()
@@ -139,6 +148,7 @@ private enum AdminRoleFilter: String, CaseIterable, Identifiable {
     case citizens
     case coordinators
     case admins
+    case suspended
 
     var id: String { rawValue }
 
@@ -148,15 +158,17 @@ private enum AdminRoleFilter: String, CaseIterable, Identifiable {
         case .citizens: return "Citizen"
         case .coordinators: return "Coord"
         case .admins: return "Admin"
+        case .suspended: return "Blocked"
         }
     }
 
-    func includes(_ role: UserRole) -> Bool {
+    func includes(_ user: ProfileUserRecord) -> Bool {
         switch self {
         case .all: return true
-        case .citizens: return role == .citizen || role == .volunteer
-        case .coordinators: return role == .coordinator
-        case .admins: return role == .admin
+        case .citizens: return user.roleValue == .citizen || user.roleValue == .volunteer
+        case .coordinators: return user.roleValue == .coordinator
+        case .admins: return user.roleValue == .admin
+        case .suspended: return user.isSuspendedValue
         }
     }
 }
@@ -166,6 +178,7 @@ private struct AdminUserCard: View {
     let isCurrentUser: Bool
     let isUpdating: Bool
     let onRoleChange: (UserRole) -> Void
+    let onSuspensionChange: (Bool) -> Void
 
     var body: some View {
         RequestCard {
@@ -193,6 +206,16 @@ private struct AdminUserCard: View {
                                 .background(Color.purple.opacity(0.12))
                                 .clipShape(Capsule())
                         }
+
+                        if user.isSuspendedValue {
+                            Text("Suspended")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.red)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(Color.red.opacity(0.12))
+                                .clipShape(Capsule())
+                        }
                     }
 
                     Text(user.email)
@@ -203,16 +226,39 @@ private struct AdminUserCard: View {
 
                 Spacer()
 
-                AdminRoleChip(role: user.roleValue)
+                VStack(alignment: .trailing, spacing: 6) {
+                    AdminRoleChip(role: user.roleValue)
+                    if user.isSuspendedValue {
+                        Label("Blocked", systemImage: "lock.fill")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.red)
+                    }
+                }
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 Label(user.availabilityValue.title, systemImage: "person.crop.circle.badge.checkmark")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
                 Spacer()
+
+                Button(role: user.isSuspendedValue ? nil : .destructive) {
+                    onSuspensionChange(!user.isSuspendedValue)
+                } label: {
+                    if isUpdating {
+                        ProgressView()
+                    } else {
+                        Label(
+                            user.isSuspendedValue ? "Reactivate" : "Suspend",
+                            systemImage: user.isSuspendedValue ? "checkmark.shield.fill" : "lock.fill"
+                        )
+                        .font(.caption.weight(.semibold))
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isUpdating || isCurrentUser)
 
                 Menu {
                     Button("Make Citizen") {
@@ -235,6 +281,7 @@ private struct AdminUserCard: View {
                 .disabled(isUpdating || isCurrentUser)
             }
         }
+        .opacity(user.isSuspendedValue ? 0.72 : 1)
     }
 
     private var roleIcon: String {

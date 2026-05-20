@@ -56,18 +56,27 @@ final class NotificationsViewModel {
     var isLoading = false
     var errorMessage: String?
     var successMessage: String?
+    var cacheMessage: String?
 
     private let realtimeSubscription = RealtimeRefreshSubscription()
     private var pollingTask: Task<Void, Never>?
 
     func load(currentUser: User?) async {
         errorMessage = nil
+        cacheMessage = nil
 
         guard let currentUser else {
             notifications = []
             unreadCount = 0
             errorMessage = "You must be signed in to view notifications."
             return
+        }
+
+        let cacheKey = "notifications.\(currentUser.id.uuidString)"
+        if notifications.isEmpty, let cached = OfflineCacheStore.load([InAppNotificationRecord].self, forKey: cacheKey) {
+            notifications = cached.value
+            unreadCount = cached.value.filter { !$0.isRead }.count
+            cacheMessage = cachedMessage(savedAt: cached.savedAt)
         }
 
         isLoading = true
@@ -85,10 +94,18 @@ final class NotificationsViewModel {
 
             notifications = loaded
             unreadCount = loaded.filter { !$0.isRead }.count
+            cacheMessage = nil
+            OfflineCacheStore.save(loaded, forKey: cacheKey)
         } catch where error.isCancellation {
             return
         } catch {
-            errorMessage = error.localizedDescription
+            if let cached = OfflineCacheStore.load([InAppNotificationRecord].self, forKey: cacheKey) {
+                notifications = cached.value
+                unreadCount = cached.value.filter { !$0.isRead }.count
+                cacheMessage = cachedMessage(savedAt: cached.savedAt)
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -110,7 +127,7 @@ final class NotificationsViewModel {
 
             unreadCount = unreadRows.count
         } catch {
-            unreadCount = 0
+            unreadCount = notifications.filter { !$0.isRead }.count
         }
     }
 
@@ -147,6 +164,7 @@ final class NotificationsViewModel {
     func markAllAsRead(currentUser: User?) async {
         errorMessage = nil
         successMessage = nil
+        cacheMessage = nil
 
         guard let currentUser else {
             errorMessage = "You must be signed in to update notifications."
@@ -212,6 +230,10 @@ final class NotificationsViewModel {
         Task {
             await realtimeSubscription.stop()
         }
+    }
+
+    private func cachedMessage(savedAt: Date) -> String {
+        "Offline mode: showing saved notifications from \(savedAt.formatted(date: .abbreviated, time: .shortened))."
     }
 }
 

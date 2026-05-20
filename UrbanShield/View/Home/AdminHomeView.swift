@@ -58,6 +58,8 @@ struct AdminHomeView: View {
 private struct AdminSettingsView: View {
     let sessionViewModel: AuthSessionViewModel
 
+    @State private var showSignOutConfirmation = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -82,18 +84,9 @@ private struct AdminSettingsView: View {
                 }
 
                 Button(role: .destructive) {
-                    Task { await sessionViewModel.signOut() }
+                    showSignOutConfirmation = true
                 } label: {
                     Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: 50)
-                }
-                .buttonStyle(.bordered)
-
-                NavigationLink {
-                    NotificationsView(sessionViewModel: sessionViewModel)
-                } label: {
-                    Label("Open Notifications", systemImage: "bell.badge.fill")
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 50)
                 }
@@ -103,5 +96,28 @@ private struct AdminSettingsView: View {
         }
         .background(RequestUI.background)
         .navigationTitle("Admin")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    NotificationsView(sessionViewModel: sessionViewModel)
+                } label: {
+                    Image(systemName: "bell.badge.fill")
+                        .font(.headline)
+                }
+                .accessibilityLabel("Notifications")
+            }
+        }
+        .confirmationDialog(
+            "Sign out?",
+            isPresented: $showSignOutConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Sign Out", role: .destructive) {
+                Task { await sessionViewModel.signOut() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You will need to sign in again to access the admin console.")
+        }
     }
 }

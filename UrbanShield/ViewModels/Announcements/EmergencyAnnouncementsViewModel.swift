@@ -14,6 +14,7 @@ final class EmergencyAnnouncementsViewModel {
     var announcements: [EmergencyAnnouncementRecord] = []
     var isLoading = false
     var errorMessage: String?
+    var cacheMessage: String?
 
     var criticalCount: Int {
         announcements.filter { $0.severityValue == .critical }.count
@@ -25,11 +26,18 @@ final class EmergencyAnnouncementsViewModel {
 
     func load(currentUser: User?) async {
         errorMessage = nil
+        cacheMessage = nil
 
         guard let currentUser else {
             errorMessage = "You must be signed in to view announcements."
             announcements = []
             return
+        }
+
+        let cacheKey = "announcements.\(currentUser.id.uuidString).\(currentUser.role.rawValue)"
+        if announcements.isEmpty, let cached = OfflineCacheStore.load([EmergencyAnnouncementRecord].self, forKey: cacheKey) {
+            announcements = cached.value
+            cacheMessage = cachedMessage(savedAt: cached.savedAt)
         }
 
         isLoading = true
@@ -48,10 +56,17 @@ final class EmergencyAnnouncementsViewModel {
             announcements = loaded.filter { announcement in
                 shouldShow(announcement, to: currentUser.role)
             }
+            cacheMessage = nil
+            OfflineCacheStore.save(announcements, forKey: cacheKey)
         } catch where error.isCancellation {
             return
         } catch {
-            errorMessage = error.localizedDescription
+            if let cached = OfflineCacheStore.load([EmergencyAnnouncementRecord].self, forKey: cacheKey) {
+                announcements = cached.value
+                cacheMessage = cachedMessage(savedAt: cached.savedAt)
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -64,5 +79,9 @@ final class EmergencyAnnouncementsViewModel {
         case .volunteers:
             return role == .volunteer
         }
+    }
+
+    private func cachedMessage(savedAt: Date) -> String {
+        "Offline mode: showing saved announcements from \(savedAt.formatted(date: .abbreviated, time: .shortened))."
     }
 }
