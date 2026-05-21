@@ -551,6 +551,8 @@ private struct CoordinatorControlLabel: View {
                 Text(title)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
                 Text(value)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.primary)
@@ -810,6 +812,7 @@ private struct RequestProgressView: View {
                         Rectangle()
                             .fill(lineColor(after: step))
                             .frame(height: 2)
+                            .offset(y: -8)
                     }
                 }
             }
