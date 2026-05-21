@@ -19,6 +19,8 @@ final class RequestDetailViewModel {
 
     var request: HelpRequestRecord?
     var evidenceItems: [RequestEvidenceViewState] = []
+    var availableVolunteers: [ProfileUserRecord] = []
+    var activeVolunteerCount: Int = 0
     var isLoading: Bool = false
     var isCancelling: Bool = false
     var isUpdatingStatus: Bool = false
@@ -74,6 +76,7 @@ final class RequestDetailViewModel {
 
             if let request {
                 OfflineCacheStore.save(request, forKey: cacheKey)
+                await loadCoordinatorAssignmentOptions(for: request)
             }
             cacheMessage = nil
 
@@ -396,6 +399,21 @@ final class RequestDetailViewModel {
         }
     }
 
+    func eligibleVolunteers(for request: HelpRequestRecord) -> [ProfileUserRecord] {
+        guard request.statusValue.acceptsVolunteers,
+              activeVolunteerCount < request.volunteerCapacity else {
+            return []
+        }
+
+        return availableVolunteers.filter { volunteer in
+            volunteer.id != request.citizenId
+                && volunteer.availabilityValue == .available
+                && !volunteer.isSuspendedValue
+                && !volunteer.skillsValue.isEmpty
+                && volunteer.skillsValue.contains { $0.supports(request.requestTypeValue) }
+        }
+    }
+
     func updateCoordinatorPriority(priority: HelpRequestPriority, currentUser: User?) async {
         errorMessage = nil
         successMessage = nil
@@ -555,6 +573,163 @@ final class RequestDetailViewModel {
             )
 
             successMessage = "Status updated to \(status.title)."
+        } catch where error.isCancellation {
+            return
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func assignCoordinatorVolunteer(volunteer: ProfileUserRecord, currentUser: User?) async {
+        errorMessage = nil
+        successMessage = nil
+
+        guard let currentUser, currentUser.role == .coordinator || currentUser.role == .admin else {
+            errorMessage = "Only coordinators can assign volunteers."
+            return
+        }
+
+        guard let request else {
+            errorMessage = "Request must be loaded before assigning a volunteer."
+            return
+        }
+
+        guard request.statusValue.acceptsVolunteers else {
+            errorMessage = "This request is no longer accepting volunteers."
+            return
+        }
+
+        guard activeVolunteerCount < request.volunteerCapacity else {
+            errorMessage = "This request already has the maximum number of active volunteers for its priority."
+            return
+        }
+
+        guard volunteer.availabilityValue == .available,
+              volunteer.skillsValue.contains(where: { $0.supports(request.requestTypeValue) }) else {
+            errorMessage = "This volunteer is not available or does not match the request type."
+            return
+        }
+
+        isUpdatingCoordinatorControls = true
+        defer { isUpdatingCoordinatorControls = false }
+
+        do {
+            let activeAssignments: [HelpRequestVolunteerRecord] = try await supabase
+                .from("help_request_volunteers")
+                .select()
+                .eq("volunteer_id", value: volunteer.id.uuidString)
+                .in("status", values: [
+                    HelpRequestStatus.confirmed.rawValue,
+                    HelpRequestStatus.inProgress.rawValue
+                ])
+                .execute()
+                .value
+
+            guard activeAssignments.isEmpty else {
+                errorMessage = "\(volunteer.fullName) already has an active task."
+                return
+            }
+
+            let requestActiveAssignments: [HelpRequestVolunteerRecord] = try await supabase
+                .from("help_request_volunteers")
+                .select()
+                .eq("request_id", value: request.id.uuidString)
+                .in("status", values: [
+                    HelpRequestStatus.confirmed.rawValue,
+                    HelpRequestStatus.inProgress.rawValue
+                ])
+                .execute()
+                .value
+
+            guard requestActiveAssignments.count < request.volunteerCapacity else {
+                errorMessage = "This request already has the maximum number of active volunteers for its priority."
+                return
+            }
+
+            let now = Date()
+
+            try await supabase
+                .from("help_request_volunteers")
+                .insert(
+                    RequestDetailVolunteerAssignmentInsert(
+                        requestId: request.id,
+                        volunteerId: volunteer.id,
+                        status: HelpRequestStatus.confirmed.rawValue
+                    )
+                )
+                .execute()
+
+            let updatedRequest: HelpRequestRecord = try await supabase
+                .from("help_requests")
+                .update(
+                    RequestDetailCoordinatorAssignmentUpdate(
+                        volunteerId: volunteer.id,
+                        status: HelpRequestStatus.confirmed.rawValue,
+                        confirmedAt: now,
+                        updatedAt: now
+                    )
+                )
+                .eq("id", value: request.id.uuidString)
+                .in("status", values: [
+                    HelpRequestStatus.open.rawValue,
+                    HelpRequestStatus.confirmed.rawValue
+                ])
+                .select()
+                .single()
+                .execute()
+                .value
+
+            try await supabase
+                .from("profiles")
+                .update(
+                    RequestDetailAssignedVolunteerProfileUpdate(
+                        role: UserRole.volunteer.rawValue,
+                        availabilityStatus: VolunteerAvailability.busy.rawValue
+                    )
+                )
+                .eq("id", value: volunteer.id.uuidString)
+                .execute()
+
+            self.request = updatedRequest
+            activeVolunteerCount = requestActiveAssignments.count + 1
+            availableVolunteers.removeAll { $0.id == volunteer.id }
+
+            try await insertCoordinationLog(
+                requestId: request.id,
+                coordinatorId: currentUser.id,
+                actionType: .volunteerAssigned,
+                oldValue: request.statusValue.rawValue,
+                newValue: HelpRequestStatus.confirmed.rawValue,
+                message: "\(volunteer.fullName) assigned to \(request.requestTypeValue.title)."
+            )
+
+            try? await ActivityLogger.log(
+                actor: currentUser,
+                action: .volunteerAssigned,
+                targetType: .request,
+                targetId: request.id,
+                requestId: request.id,
+                targetUserId: volunteer.id,
+                message: "\(volunteer.fullName) assigned to \(request.requestTypeValue.title).",
+                metadata: [
+                    "old_status": request.statusValue.rawValue,
+                    "new_status": HelpRequestStatus.confirmed.rawValue,
+                    "volunteer_name": volunteer.fullName
+                ]
+            )
+
+            try? await InAppNotificationService.notifyUsers(
+                userIds: [request.citizenId, volunteer.id],
+                actorId: currentUser.id,
+                title: "Volunteer assigned",
+                message: "\(volunteer.fullName) was assigned to \(request.requestTypeValue.title).",
+                category: .assignment,
+                linkType: .request,
+                linkId: request.id,
+                requestId: request.id
+            )
+
+            successMessage = "\(volunteer.fullName) assigned to \(request.requestTypeValue.title)."
         } catch where error.isCancellation {
             return
         } catch {
@@ -778,6 +953,50 @@ final class RequestDetailViewModel {
             .value
 
         return assignments.first
+    }
+
+    private func loadCoordinatorAssignmentOptions(for request: HelpRequestRecord) async {
+        do {
+            let activeAssignments: [HelpRequestVolunteerRecord] = try await supabase
+                .from("help_request_volunteers")
+                .select()
+                .eq("request_id", value: request.id.uuidString)
+                .in("status", values: [
+                    HelpRequestStatus.confirmed.rawValue,
+                    HelpRequestStatus.inProgress.rawValue
+                ])
+                .execute()
+                .value
+
+            activeVolunteerCount = activeAssignments.count
+            let activeVolunteerIds = Set(activeAssignments.map(\.volunteerId))
+
+            guard request.statusValue.acceptsVolunteers,
+                  activeAssignments.count < request.volunteerCapacity else {
+                availableVolunteers = []
+                return
+            }
+
+            let profiles: [ProfileUserRecord] = try await supabase
+                .from("profiles")
+                .select()
+                .eq("availability_status", value: VolunteerAvailability.available.rawValue)
+                .order("full_name", ascending: true)
+                .execute()
+                .value
+
+            availableVolunteers = profiles.filter { profile in
+                profile.id != request.citizenId
+                    && !activeVolunteerIds.contains(profile.id)
+                    && !profile.isSuspendedValue
+                    && profile.skillsValue.contains { $0.supports(request.requestTypeValue) }
+            }
+        } catch where error.isCancellation {
+            return
+        } catch {
+            activeVolunteerCount = 0
+            availableVolunteers = []
+        }
     }
 
     private func loadEvidence(requestId: UUID) async {
@@ -1028,6 +1247,42 @@ private struct RequestDetailCoordinationLogInsert: Encodable {
         case oldValue = "old_value"
         case newValue = "new_value"
         case message
+    }
+}
+
+private struct RequestDetailVolunteerAssignmentInsert: Encodable {
+    let requestId: UUID
+    let volunteerId: UUID
+    let status: String
+
+    enum CodingKeys: String, CodingKey {
+        case requestId = "request_id"
+        case volunteerId = "volunteer_id"
+        case status
+    }
+}
+
+private struct RequestDetailCoordinatorAssignmentUpdate: Encodable {
+    let volunteerId: UUID
+    let status: String
+    let confirmedAt: Date
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case volunteerId = "volunteer_id"
+        case status
+        case confirmedAt = "confirmed_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+private struct RequestDetailAssignedVolunteerProfileUpdate: Encodable {
+    let role: String
+    let availabilityStatus: String
+
+    enum CodingKeys: String, CodingKey {
+        case role
+        case availabilityStatus = "availability_status"
     }
 }
 

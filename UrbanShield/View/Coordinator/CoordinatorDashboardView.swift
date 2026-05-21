@@ -68,6 +68,7 @@ struct CoordinatorDashboardView: View {
                                     CoordinatorRequestCard(
                                         request: request,
                                         eligibleVolunteers: viewModel.eligibleVolunteers(for: request),
+                                        activeVolunteerCount: viewModel.activeVolunteerCount(for: request),
                                         statusTargets: viewModel.allowedStatusTargets(for: request),
                                         isUpdating: viewModel.updatingRequestId == request.id
                                     ) { priority in
@@ -300,6 +301,7 @@ private struct CoordinatorMetricCard: View {
 private struct CoordinatorRequestCard: View {
     let request: HelpRequestRecord
     let eligibleVolunteers: [ProfileUserRecord]
+    let activeVolunteerCount: Int
     let statusTargets: [HelpRequestStatus]
     let isUpdating: Bool
     let onPriorityChange: (HelpRequestPriority) -> Void
@@ -338,6 +340,13 @@ private struct CoordinatorRequestCard: View {
             HStack(spacing: 8) {
                 RequestPriorityChip(priority: request.priorityValue)
                 RequestUrgencyChip(urgency: request.urgencyValue)
+                Label("\(activeVolunteerCount)/\(request.volunteerCapacity)", systemImage: "person.2.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color(.tertiarySystemGroupedBackground))
+                    .clipShape(Capsule())
                 Spacer()
             }
 

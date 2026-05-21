@@ -114,6 +114,12 @@ enum HelpRequestStatus: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+extension HelpRequestPriority {
+    var volunteerCapacity: Int {
+        self == .critical ? 3 : 1
+    }
+}
+
 struct HelpRequestRecord: Codable, Identifiable, Equatable {
     let id: UUID
     let citizenId: UUID
@@ -163,6 +169,10 @@ struct HelpRequestRecord: Codable, Identifiable, Equatable {
 
     var statusValue: HelpRequestStatus {
         HelpRequestStatus(rawValue: status) ?? .open
+    }
+
+    var volunteerCapacity: Int {
+        priorityValue.volunteerCapacity
     }
 
     func applyingVolunteerAssignment(_ assignment: HelpRequestVolunteerRecord) -> HelpRequestRecord {

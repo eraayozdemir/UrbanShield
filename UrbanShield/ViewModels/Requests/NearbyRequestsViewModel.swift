@@ -12,6 +12,7 @@ import Supabase
 final class NearbyRequestsViewModel {
 
     var requests: [HelpRequestRecord] = []
+    var activeVolunteerCounts: [UUID: Int] = [:]
     var isLoading: Bool = false
     var confirmingRequestId: UUID?
     var errorMessage: String?
@@ -65,8 +66,33 @@ final class NearbyRequestsViewModel {
                 .execute()
                 .value
 
+            let openRequestIds = openRequests.map { $0.id.uuidString }
+            let allActiveAssignments: [HelpRequestVolunteerRecord]
+            if openRequestIds.isEmpty {
+                allActiveAssignments = []
+            } else {
+                allActiveAssignments = try await supabase
+                    .from("help_request_volunteers")
+                    .select()
+                    .in("request_id", values: openRequestIds)
+                    .in("status", values: [
+                        HelpRequestStatus.confirmed.rawValue,
+                        HelpRequestStatus.inProgress.rawValue
+                    ])
+                    .execute()
+                    .value
+            }
+
+            activeVolunteerCounts = Dictionary(
+                grouping: allActiveAssignments,
+                by: \.requestId
+            ).mapValues(\.count)
+
             requests = openRequests.filter { request in
-                request.statusValue.acceptsVolunteers && !acceptedRequestIds.contains(request.id)
+                let activeVolunteerCount = activeVolunteerCounts[request.id] ?? 0
+                return request.statusValue.acceptsVolunteers
+                    && !acceptedRequestIds.contains(request.id)
+                    && activeVolunteerCount < request.volunteerCapacity
             }
             cacheMessage = nil
             OfflineCacheStore.save(requests, forKey: cacheKey)
@@ -232,6 +258,10 @@ final class NearbyRequestsViewModel {
 
     private func cachedMessage(savedAt: Date) -> String {
         "Offline mode: showing saved nearby requests from \(savedAt.formatted(date: .abbreviated, time: .shortened))."
+    }
+
+    func activeVolunteerCount(for request: HelpRequestRecord) -> Int {
+        activeVolunteerCounts[request.id] ?? 0
     }
 }
 

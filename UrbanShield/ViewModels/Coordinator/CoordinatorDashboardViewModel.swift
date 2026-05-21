@@ -13,6 +13,7 @@ final class CoordinatorDashboardViewModel {
 
     var requests: [HelpRequestRecord] = []
     var availableVolunteers: [ProfileUserRecord] = []
+    var activeVolunteerCounts: [UUID: Int] = [:]
     var activityLogs: [CoordinationLogRecord] = []
     var isLoading = false
     var updatingRequestId: UUID?
@@ -40,6 +41,28 @@ final class CoordinatorDashboardViewModel {
                 .order("updated_at", ascending: false)
                 .execute()
                 .value
+
+            let requestIds = loadedRequests.map { $0.id.uuidString }
+            let activeAssignments: [HelpRequestVolunteerRecord]
+            if requestIds.isEmpty {
+                activeAssignments = []
+            } else {
+                activeAssignments = try await supabase
+                    .from("help_request_volunteers")
+                    .select()
+                    .in("request_id", values: requestIds)
+                    .in("status", values: [
+                        HelpRequestStatus.confirmed.rawValue,
+                        HelpRequestStatus.inProgress.rawValue
+                    ])
+                    .execute()
+                    .value
+            }
+
+            activeVolunteerCounts = Dictionary(
+                grouping: activeAssignments,
+                by: \.requestId
+            ).mapValues(\.count)
 
             availableVolunteers = try await supabase
                 .from("profiles")
@@ -270,7 +293,9 @@ final class CoordinatorDashboardViewModel {
     }
 
     func eligibleVolunteers(for request: HelpRequestRecord) -> [ProfileUserRecord] {
-        availableVolunteers.filter { volunteer in
+        guard requestHasVolunteerCapacity(request) else { return [] }
+
+        return availableVolunteers.filter { volunteer in
             volunteer.id != request.citizenId
                 && volunteer.availabilityValue == .available
                 && !volunteer.skillsValue.isEmpty
@@ -293,6 +318,11 @@ final class CoordinatorDashboardViewModel {
 
         guard request.statusValue.acceptsVolunteers else {
             errorMessage = "This request is no longer accepting volunteers."
+            return
+        }
+
+        guard requestHasVolunteerCapacity(request) else {
+            errorMessage = "This request already has the maximum number of active volunteers for its priority."
             return
         }
 
@@ -319,6 +349,22 @@ final class CoordinatorDashboardViewModel {
 
             guard activeAssignments.isEmpty else {
                 errorMessage = "\(volunteer.fullName) already has an active task."
+                return
+            }
+
+            let requestActiveAssignments: [HelpRequestVolunteerRecord] = try await supabase
+                .from("help_request_volunteers")
+                .select()
+                .eq("request_id", value: request.id.uuidString)
+                .in("status", values: [
+                    HelpRequestStatus.confirmed.rawValue,
+                    HelpRequestStatus.inProgress.rawValue
+                ])
+                .execute()
+                .value
+
+            guard requestActiveAssignments.count < request.volunteerCapacity else {
+                errorMessage = "This request already has the maximum number of active volunteers for its priority."
                 return
             }
 
@@ -407,6 +453,7 @@ final class CoordinatorDashboardViewModel {
                 requests[index] = updatedRequest
                 requests.sort(by: sortForCoordinator)
             }
+            activeVolunteerCounts[request.id] = requestActiveAssignments.count + 1
             availableVolunteers.removeAll { $0.id == volunteer.id }
             activityLogs = try await loadRecentLogs()
             successMessage = "\(volunteer.fullName) assigned to \(request.requestTypeValue.title)."
@@ -427,6 +474,14 @@ final class CoordinatorDashboardViewModel {
         }
 
         return lhs.updatedAt > rhs.updatedAt
+    }
+
+    private func requestHasVolunteerCapacity(_ request: HelpRequestRecord) -> Bool {
+        (activeVolunteerCounts[request.id] ?? 0) < request.volunteerCapacity
+    }
+
+    func activeVolunteerCount(for request: HelpRequestRecord) -> Int {
+        activeVolunteerCounts[request.id] ?? 0
     }
 
     private func syncAssignmentsAndVolunteer(

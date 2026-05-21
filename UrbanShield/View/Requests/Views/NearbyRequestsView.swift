@@ -74,6 +74,7 @@ struct NearbyRequestsView: View {
                             ForEach(filteredRequests) { item in
                                 NearbyRequestCard(
                                     item: item,
+                                    activeVolunteerCount: viewModel.activeVolunteerCount(for: item.request),
                                     isConfirming: viewModel.confirmingRequestId == item.request.id
                                 ) {
                                     Task {
@@ -427,6 +428,7 @@ private struct NearbyLocationMessage: View {
 
 private struct NearbyRequestCard: View {
     let item: NearbyRequestItem
+    let activeVolunteerCount: Int
     let isConfirming: Bool
     let onConfirm: () -> Void
 
@@ -460,6 +462,7 @@ private struct NearbyRequestCard: View {
                 .lineLimit(3)
 
             HStack(spacing: 8) {
+                NearbyMetaPill(title: volunteerCapacityText, systemImage: "person.2.fill")
                 NearbyMetaPill(title: coordinateText, systemImage: "location.fill")
 
                 if let distance = item.distance {
@@ -495,6 +498,10 @@ private struct NearbyRequestCard: View {
         let latitude = item.request.latitude.formatted(.number.precision(.fractionLength(2...4)))
         let longitude = item.request.longitude.formatted(.number.precision(.fractionLength(2...4)))
         return "\(latitude), \(longitude)"
+    }
+
+    private var volunteerCapacityText: String {
+        "\(activeVolunteerCount)/\(item.request.volunteerCapacity) volunteers"
     }
 }
 

@@ -264,6 +264,8 @@ struct RequestDetailView: View {
                 CoordinatorDetailControls(
                     request: request,
                     statusTargets: viewModel.allowedCoordinatorStatusTargets(for: request),
+                    eligibleVolunteers: viewModel.eligibleVolunteers(for: request),
+                    activeVolunteerCount: viewModel.activeVolunteerCount,
                     isUpdating: viewModel.isUpdatingCoordinatorControls,
                     onStatusChange: { status in
                         Task {
@@ -274,6 +276,12 @@ struct RequestDetailView: View {
                     onPriorityChange: { priority in
                         Task {
                             await viewModel.updateCoordinatorPriority(priority: priority, currentUser: currentUser)
+                        }
+                    },
+                    onAssignVolunteer: { volunteer in
+                        Task {
+                            await viewModel.assignCoordinatorVolunteer(volunteer: volunteer, currentUser: currentUser)
+                            await sessionViewModel.refreshCurrentUser()
                         }
                     }
                 )
@@ -398,17 +406,32 @@ struct RequestDetailView: View {
 private struct CoordinatorDetailControls: View {
     let request: HelpRequestRecord
     let statusTargets: [HelpRequestStatus]
+    let eligibleVolunteers: [ProfileUserRecord]
+    let activeVolunteerCount: Int
     let isUpdating: Bool
     let onStatusChange: (HelpRequestStatus) -> Void
     let onPriorityChange: (HelpRequestPriority) -> Void
+    let onAssignVolunteer: (ProfileUserRecord) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Coordinator Controls")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("Coordinator Controls")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
 
-            HStack(spacing: 10) {
+                Spacer()
+
+                Label("\(activeVolunteerCount)/\(request.volunteerCapacity)", systemImage: "person.2.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .clipShape(Capsule())
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                 Menu {
                     if statusTargets.isEmpty {
                         Text("No available status changes")
@@ -450,6 +473,29 @@ private struct CoordinatorDetailControls: View {
                     )
                 }
                 .disabled(isUpdating)
+
+                Menu {
+                    if eligibleVolunteers.isEmpty {
+                        Text(assignEmptyText)
+                    } else {
+                        ForEach(eligibleVolunteers) { volunteer in
+                            Button {
+                                onAssignVolunteer(volunteer)
+                            } label: {
+                                Label(volunteer.fullName, systemImage: "person.crop.circle.badge.checkmark")
+                            }
+                        }
+                    }
+                } label: {
+                    CoordinatorControlLabel(
+                        title: "Assign",
+                        value: assignValueText,
+                        systemImage: "person.badge.plus",
+                        color: .green,
+                        isUpdating: isUpdating
+                    )
+                }
+                .disabled(isUpdating || eligibleVolunteers.isEmpty)
             }
         }
         .padding(12)
@@ -465,6 +511,20 @@ private struct CoordinatorDetailControls: View {
         case .completed: return "checkmark.circle.fill"
         case .cancelled: return "xmark.circle.fill"
         }
+    }
+
+    private var assignValueText: String {
+        if activeVolunteerCount >= request.volunteerCapacity {
+            return "Full"
+        }
+
+        return eligibleVolunteers.isEmpty ? "No Match" : "\(eligibleVolunteers.count) ready"
+    }
+
+    private var assignEmptyText: String {
+        activeVolunteerCount >= request.volunteerCapacity
+            ? "Volunteer capacity is full"
+            : "No matching available volunteers"
     }
 }
 
