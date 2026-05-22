@@ -128,7 +128,7 @@ struct CoordinatorMapView: View {
                     Text("Operational Map")
                         .font(.title2.bold())
 
-                    Text("Filter requests by status, urgency, priority, type, text, and distance from a selected center.")
+                    Text("Filter requests by status, urgency, type, text, and distance from a selected center.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -159,7 +159,6 @@ struct CoordinatorMapView: View {
                 StatusFilterMenu(selection: $viewModel.statusFilter)
                 UrgencyFilterMenu(selection: $viewModel.urgencyFilter)
                 TypeFilterMenu(selection: $viewModel.typeFilter)
-                PriorityFilterMenu(selection: $viewModel.priorityFilter)
             }
 
             HStack {
@@ -259,7 +258,7 @@ private struct CoordinatorOperationalMap: View {
                     systemImage: RequestUI.requestIcon(request.requestTypeValue),
                     coordinate: request.operationalCoordinate
                 )
-                .tint(RequestUI.priorityColor(request.priorityValue))
+                .tint(RequestUI.urgencyColor(request.urgencyValue))
             }
         }
         .mapControls {
@@ -320,9 +319,9 @@ private struct CoordinatorMapRequestRow: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: RequestUI.requestIcon(request.requestTypeValue))
                 .font(.subheadline)
-                .foregroundStyle(RequestUI.priorityColor(request.priorityValue))
+                .foregroundStyle(RequestUI.urgencyColor(request.urgencyValue))
                 .frame(width: 34, height: 34)
-                .background(RequestUI.priorityColor(request.priorityValue).opacity(0.12))
+                .background(RequestUI.urgencyColor(request.urgencyValue).opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
@@ -336,7 +335,7 @@ private struct CoordinatorMapRequestRow: View {
 
                 HStack(spacing: 8) {
                     RequestStatusChip(status: request.statusValue)
-                    RequestPriorityChip(priority: request.priorityValue)
+                    RequestUrgencyChip(urgency: request.urgencyValue)
                 }
             }
 
@@ -396,23 +395,6 @@ private struct TypeFilterMenu: View {
             Button("All") { selection = nil }
             ForEach(HelpRequestType.allCases) { type in
                 Button(type.title) { selection = type }
-            }
-        }
-    }
-}
-
-private struct PriorityFilterMenu: View {
-    @Binding var selection: HelpRequestPriority?
-
-    var body: some View {
-        OperationalFilterMenu(
-            title: "Priority",
-            value: selection?.title ?? "All",
-            systemImage: "flag.fill"
-        ) {
-            Button("All") { selection = nil }
-            ForEach(HelpRequestPriority.allCases) { priority in
-                Button(priority.title) { selection = priority }
             }
         }
     }

@@ -106,86 +106,6 @@ final class CoordinatorDashboardViewModel {
         }
     }
 
-    func updatePriority(
-        request: HelpRequestRecord,
-        priority: HelpRequestPriority,
-        currentUser: User?
-    ) async {
-        errorMessage = nil
-        successMessage = nil
-
-        guard let currentUser, currentUser.role == .coordinator || currentUser.role == .admin else {
-            errorMessage = "Only coordinators can update request priority."
-            return
-        }
-
-        updatingRequestId = request.id
-        defer { updatingRequestId = nil }
-
-        do {
-            let updatedRequest: HelpRequestRecord = try await supabase
-                .from("help_requests")
-                .update(
-                    RequestPriorityUpdate(
-                        priorityLevel: priority.rawValue,
-                        updatedAt: Date()
-                    )
-                )
-                .eq("id", value: request.id.uuidString)
-                .select()
-                .single()
-                .execute()
-                .value
-
-            try await insertLog(
-                requestId: request.id,
-                coordinatorId: currentUser.id,
-                actionType: .priorityUpdated,
-                oldValue: request.priorityValue.rawValue,
-                newValue: priority.rawValue,
-                message: "Priority changed from \(request.priorityValue.title) to \(priority.title)."
-            )
-
-
-            try? await ActivityLogger.log(
-                actor: currentUser,
-                action: .requestPriorityUpdated,
-                targetType: .request,
-                targetId: request.id,
-                requestId: request.id,
-                message: "Priority changed from \(request.priorityValue.title) to \(priority.title).",
-                metadata: [
-                    "old_priority": request.priorityValue.rawValue,
-                    "new_priority": priority.rawValue
-                ]
-            )
-
-            try? await InAppNotificationService.notifyUser(
-                userId: request.citizenId,
-                actorId: currentUser.id,
-                title: "Request priority updated",
-                message: "Your \(request.requestTypeValue.title) request priority is now \(priority.title).",
-                category: .coordinator,
-                linkType: .request,
-                linkId: request.id,
-                requestId: request.id
-            )
-
-
-            if let index = requests.firstIndex(where: { $0.id == request.id }) {
-                requests[index] = updatedRequest
-                requests.sort(by: sortForCoordinator)
-            }
-            activityLogs = try await loadRecentLogs()
-
-            successMessage = "Priority updated to \(priority.title)."
-        } catch where error.isCancellation {
-            return
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
     func updateStatus(
         request: HelpRequestRecord,
         status: HelpRequestStatus,
@@ -322,7 +242,7 @@ final class CoordinatorDashboardViewModel {
         }
 
         guard requestHasVolunteerCapacity(request) else {
-            errorMessage = "This request already has the maximum number of active volunteers for its priority."
+            errorMessage = "This request already has the maximum number of active volunteers for its urgency."
             return
         }
 
@@ -364,7 +284,7 @@ final class CoordinatorDashboardViewModel {
                 .value
 
             guard requestActiveAssignments.count < request.volunteerCapacity else {
-                errorMessage = "This request already has the maximum number of active volunteers for its priority."
+                errorMessage = "This request already has the maximum number of active volunteers for its urgency."
                 return
             }
 
@@ -469,8 +389,8 @@ final class CoordinatorDashboardViewModel {
             return lhs.statusValue.isActive
         }
 
-        if lhs.priorityValue.sortRank != rhs.priorityValue.sortRank {
-            return lhs.priorityValue.sortRank > rhs.priorityValue.sortRank
+        if lhs.urgencyValue.sortRank != rhs.urgencyValue.sortRank {
+            return lhs.urgencyValue.sortRank > rhs.urgencyValue.sortRank
         }
 
         return lhs.updatedAt > rhs.updatedAt
@@ -738,15 +658,5 @@ private struct CoordinatorVolunteerAvailabilityUpdate: Encodable {
 
     enum CodingKeys: String, CodingKey {
         case availabilityStatus = "availability_status"
-    }
-}
-
-private struct RequestPriorityUpdate: Encodable {
-    let priorityLevel: String
-    let updatedAt: Date
-
-    enum CodingKeys: String, CodingKey {
-        case priorityLevel = "priority_level"
-        case updatedAt = "updated_at"
     }
 }

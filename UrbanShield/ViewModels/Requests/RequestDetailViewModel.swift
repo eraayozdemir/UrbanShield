@@ -414,83 +414,6 @@ final class RequestDetailViewModel {
         }
     }
 
-    func updateCoordinatorPriority(priority: HelpRequestPriority, currentUser: User?) async {
-        errorMessage = nil
-        successMessage = nil
-
-        guard let currentUser, currentUser.role == .coordinator || currentUser.role == .admin else {
-            errorMessage = "Only coordinators can update request priority."
-            return
-        }
-
-        guard let request else {
-            errorMessage = "Request must be loaded before updating priority."
-            return
-        }
-
-        guard request.priorityValue != priority else { return }
-
-        isUpdatingCoordinatorControls = true
-        defer { isUpdatingCoordinatorControls = false }
-
-        do {
-            let updatedRequest: HelpRequestRecord = try await supabase
-                .from("help_requests")
-                .update(
-                    RequestDetailCoordinatorPriorityUpdate(
-                        priorityLevel: priority.rawValue,
-                        updatedAt: Date()
-                    )
-                )
-                .eq("id", value: request.id.uuidString)
-                .select()
-                .single()
-                .execute()
-                .value
-
-            self.request = updatedRequest
-
-            try await insertCoordinationLog(
-                requestId: request.id,
-                coordinatorId: currentUser.id,
-                actionType: .priorityUpdated,
-                oldValue: request.priorityValue.rawValue,
-                newValue: priority.rawValue,
-                message: "Priority changed from \(request.priorityValue.title) to \(priority.title)."
-            )
-
-            try? await ActivityLogger.log(
-                actor: currentUser,
-                action: .requestPriorityUpdated,
-                targetType: .request,
-                targetId: request.id,
-                requestId: request.id,
-                message: "Priority changed from \(request.priorityValue.title) to \(priority.title).",
-                metadata: [
-                    "old_priority": request.priorityValue.rawValue,
-                    "new_priority": priority.rawValue
-                ]
-            )
-
-            try? await InAppNotificationService.notifyUser(
-                userId: request.citizenId,
-                actorId: currentUser.id,
-                title: "Request priority updated",
-                message: "Your \(request.requestTypeValue.title) request priority is now \(priority.title).",
-                category: .coordinator,
-                linkType: .request,
-                linkId: request.id,
-                requestId: request.id
-            )
-
-            successMessage = "Priority updated to \(priority.title)."
-        } catch where error.isCancellation {
-            return
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
     func updateCoordinatorStatus(status: HelpRequestStatus, currentUser: User?) async {
         errorMessage = nil
         successMessage = nil
@@ -600,7 +523,7 @@ final class RequestDetailViewModel {
         }
 
         guard activeVolunteerCount < request.volunteerCapacity else {
-            errorMessage = "This request already has the maximum number of active volunteers for its priority."
+            errorMessage = "This request already has the maximum number of active volunteers for its urgency."
             return
         }
 
@@ -642,7 +565,7 @@ final class RequestDetailViewModel {
                 .value
 
             guard requestActiveAssignments.count < request.volunteerCapacity else {
-                errorMessage = "This request already has the maximum number of active volunteers for its priority."
+                errorMessage = "This request already has the maximum number of active volunteers for its urgency."
                 return
             }
 
@@ -1207,16 +1130,6 @@ private struct RequestStatusUpdate: Encodable {
         case status
         case updatedAt = "updated_at"
         case completedAt = "completed_at"
-    }
-}
-
-private struct RequestDetailCoordinatorPriorityUpdate: Encodable {
-    let priorityLevel: String
-    let updatedAt: Date
-
-    enum CodingKeys: String, CodingKey {
-        case priorityLevel = "priority_level"
-        case updatedAt = "updated_at"
     }
 }
 

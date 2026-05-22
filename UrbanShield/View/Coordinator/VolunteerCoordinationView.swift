@@ -312,7 +312,6 @@ private struct VolunteerCoordinationCard: View {
 
             if let request = member.activeRequest {
                 HStack(spacing: 8) {
-                    RequestPriorityChip(priority: request.priorityValue)
                     RequestUrgencyChip(urgency: request.urgencyValue)
                     Spacer()
                 }

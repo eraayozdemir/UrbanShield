@@ -256,7 +256,6 @@ struct RequestDetailView: View {
 
             HStack(spacing: 10) {
                 RequestStatusChip(status: request.statusValue)
-                RequestPriorityChip(priority: request.priorityValue)
                 RequestUrgencyChip(urgency: request.urgencyValue)
             }
 
@@ -271,11 +270,6 @@ struct RequestDetailView: View {
                         Task {
                             await viewModel.updateCoordinatorStatus(status: status, currentUser: currentUser)
                             await sessionViewModel.refreshCurrentUser()
-                        }
-                    },
-                    onPriorityChange: { priority in
-                        Task {
-                            await viewModel.updateCoordinatorPriority(priority: priority, currentUser: currentUser)
                         }
                     },
                     onAssignVolunteer: { volunteer in
@@ -410,7 +404,6 @@ private struct CoordinatorDetailControls: View {
     let activeVolunteerCount: Int
     let isUpdating: Bool
     let onStatusChange: (HelpRequestStatus) -> Void
-    let onPriorityChange: (HelpRequestPriority) -> Void
     let onAssignVolunteer: (ProfileUserRecord) -> Void
 
     var body: some View {
@@ -454,25 +447,6 @@ private struct CoordinatorDetailControls: View {
                     )
                 }
                 .disabled(isUpdating || statusTargets.isEmpty)
-
-                Menu {
-                    ForEach(HelpRequestPriority.allCases) { priority in
-                        Button {
-                            onPriorityChange(priority)
-                        } label: {
-                            Label(priority.title, systemImage: priority == request.priorityValue ? "checkmark" : "flag")
-                        }
-                    }
-                } label: {
-                    CoordinatorControlLabel(
-                        title: "Priority",
-                        value: request.priorityValue.title,
-                        systemImage: "flag.fill",
-                        color: RequestUI.priorityColor(request.priorityValue),
-                        isUpdating: isUpdating
-                    )
-                }
-                .disabled(isUpdating)
 
                 Menu {
                     if eligibleVolunteers.isEmpty {

@@ -26,8 +26,8 @@ struct CoordinatorDashboardView: View {
         viewModel.requests.filter { $0.statusValue.isActive }
     }
 
-    private var criticalPriorityCount: Int {
-        viewModel.requests.filter { $0.priorityValue == .critical && $0.statusValue.isActive }.count
+    private var criticalUrgencyCount: Int {
+        viewModel.requests.filter { $0.urgencyValue == .critical && $0.statusValue.isActive }.count
     }
 
     private var unassignedCount: Int {
@@ -71,15 +71,7 @@ struct CoordinatorDashboardView: View {
                                         activeVolunteerCount: viewModel.activeVolunteerCount(for: request),
                                         statusTargets: viewModel.allowedStatusTargets(for: request),
                                         isUpdating: viewModel.updatingRequestId == request.id
-                                    ) { priority in
-                                        Task {
-                                            await viewModel.updatePriority(
-                                                request: request,
-                                                priority: priority,
-                                                currentUser: currentUser
-                                            )
-                                        }
-                                    } onStatusChange: { status in
+                                    ) { status in
                                         Task {
                                             await viewModel.updateStatus(
                                                 request: request,
@@ -178,7 +170,7 @@ struct CoordinatorDashboardView: View {
                     Text("Response Dashboard")
                         .font(.title2.bold())
 
-                    Text("Monitor active requests and adjust operational priority for the response queue.")
+                    Text("Monitor active requests and coordinate the response queue.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -197,7 +189,7 @@ struct CoordinatorDashboardView: View {
 
             CoordinatorMetricCard(
                 title: "Critical",
-                value: "\(criticalPriorityCount)",
+                value: "\(criticalUrgencyCount)",
                 systemImage: "flag.fill",
                 color: .red
             )
@@ -304,7 +296,6 @@ private struct CoordinatorRequestCard: View {
     let activeVolunteerCount: Int
     let statusTargets: [HelpRequestStatus]
     let isUpdating: Bool
-    let onPriorityChange: (HelpRequestPriority) -> Void
     let onStatusChange: (HelpRequestStatus) -> Void
     let onAssignVolunteer: (ProfileUserRecord) -> Void
 
@@ -313,9 +304,9 @@ private struct CoordinatorRequestCard: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: RequestUI.requestIcon(request.requestTypeValue))
                     .font(.headline)
-                    .foregroundStyle(RequestUI.priorityColor(request.priorityValue))
+                    .foregroundStyle(RequestUI.urgencyColor(request.urgencyValue))
                     .frame(width: 42, height: 42)
-                    .background(RequestUI.priorityColor(request.priorityValue).opacity(0.12))
+                    .background(RequestUI.urgencyColor(request.urgencyValue).opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 5) {
@@ -338,7 +329,6 @@ private struct CoordinatorRequestCard: View {
                 .lineLimit(2)
 
             HStack(spacing: 8) {
-                RequestPriorityChip(priority: request.priorityValue)
                 RequestUrgencyChip(urgency: request.urgencyValue)
                 Label("\(activeVolunteerCount)/\(request.volunteerCapacity)", systemImage: "person.2.fill")
                     .font(.caption.weight(.semibold))
@@ -402,24 +392,6 @@ private struct CoordinatorRequestCard: View {
                     }
                     .disabled(isUpdating || eligibleVolunteers.isEmpty)
                 }
-
-                Menu {
-                    ForEach(HelpRequestPriority.allCases) { priority in
-                        Button {
-                            onPriorityChange(priority)
-                        } label: {
-                            Label(priority.title, systemImage: priority == request.priorityValue ? "checkmark" : "flag")
-                        }
-                    }
-                } label: {
-                    if isUpdating {
-                        ProgressView()
-                    } else {
-                        Label("Priority", systemImage: "flag.fill")
-                            .font(.caption.weight(.semibold))
-                    }
-                }
-                .disabled(isUpdating)
 
                 Image(systemName: "chevron.right")
                     .font(.footnote.weight(.semibold))

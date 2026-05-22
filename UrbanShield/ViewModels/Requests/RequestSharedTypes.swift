@@ -43,24 +43,6 @@ enum HelpRequestUrgency: String, CaseIterable, Identifiable, Codable {
         case .critical: return "Critical"
         }
     }
-}
-
-enum HelpRequestPriority: String, CaseIterable, Identifiable, Codable {
-    case low
-    case medium
-    case high
-    case critical
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .low: return "Low"
-        case .medium: return "Medium"
-        case .high: return "High"
-        case .critical: return "Critical"
-        }
-    }
 
     var sortRank: Int {
         switch self {
@@ -114,7 +96,7 @@ enum HelpRequestStatus: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-extension HelpRequestPriority {
+extension HelpRequestUrgency {
     var volunteerCapacity: Int {
         self == .critical ? 3 : 1
     }
@@ -127,7 +109,6 @@ struct HelpRequestRecord: Codable, Identifiable, Equatable {
     let requestType: String
     let description: String
     let urgencyLevel: String
-    let priorityLevel: String?
     let status: String
     let latitude: Double
     let longitude: Double
@@ -143,7 +124,6 @@ struct HelpRequestRecord: Codable, Identifiable, Equatable {
         case requestType = "request_type"
         case description
         case urgencyLevel = "urgency_level"
-        case priorityLevel = "priority_level"
         case status
         case latitude
         case longitude
@@ -161,18 +141,12 @@ struct HelpRequestRecord: Codable, Identifiable, Equatable {
         HelpRequestUrgency(rawValue: urgencyLevel) ?? .medium
     }
 
-    var priorityValue: HelpRequestPriority {
-        HelpRequestPriority(rawValue: priorityLevel ?? "")
-            ?? HelpRequestPriority(rawValue: urgencyLevel)
-            ?? .medium
-    }
-
     var statusValue: HelpRequestStatus {
         HelpRequestStatus(rawValue: status) ?? .open
     }
 
     var volunteerCapacity: Int {
-        priorityValue.volunteerCapacity
+        urgencyValue.volunteerCapacity
     }
 
     func applyingVolunteerAssignment(_ assignment: HelpRequestVolunteerRecord) -> HelpRequestRecord {
@@ -183,7 +157,6 @@ struct HelpRequestRecord: Codable, Identifiable, Equatable {
             requestType: requestType,
             description: description,
             urgencyLevel: urgencyLevel,
-            priorityLevel: priorityLevel,
             status: assignment.status,
             latitude: latitude,
             longitude: longitude,

@@ -15,7 +15,6 @@ final class CoordinatorMapViewModel {
     var statusFilter: HelpRequestStatus?
     var urgencyFilter: HelpRequestUrgency?
     var typeFilter: HelpRequestType?
-    var priorityFilter: HelpRequestPriority?
     var searchText = ""
     var latitudeText = ""
     var longitudeText = ""
@@ -92,16 +91,11 @@ final class CoordinatorMapViewModel {
                 return false
             }
 
-            if let priorityFilter, request.priorityValue != priorityFilter {
-                return false
-            }
-
             if !normalizedSearch.isEmpty {
                 let haystack = [
                     request.requestTypeValue.title,
                     request.statusValue.title,
                     request.urgencyValue.title,
-                    request.priorityValue.title,
                     request.description
                 ]
                 .joined(separator: " ")
@@ -129,7 +123,6 @@ final class CoordinatorMapViewModel {
         statusFilter = nil
         urgencyFilter = nil
         typeFilter = nil
-        priorityFilter = nil
         searchText = ""
         radiusText = ""
     }
@@ -139,8 +132,8 @@ final class CoordinatorMapViewModel {
             return lhs.statusValue.isActive
         }
 
-        if lhs.priorityValue.sortRank != rhs.priorityValue.sortRank {
-            return lhs.priorityValue.sortRank > rhs.priorityValue.sortRank
+        if lhs.urgencyValue.sortRank != rhs.urgencyValue.sortRank {
+            return lhs.urgencyValue.sortRank > rhs.urgencyValue.sortRank
         }
 
         return lhs.updatedAt > rhs.updatedAt

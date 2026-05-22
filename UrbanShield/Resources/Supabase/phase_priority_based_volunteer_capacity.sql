@@ -1,4 +1,4 @@
--- Priority based volunteer capacity for help requests.
+-- Urgency based volunteer capacity for help requests.
 -- Rule:
 -- - critical requests can have up to 3 active volunteers
 -- - low / medium / high requests can have 1 active volunteer
@@ -95,11 +95,11 @@ begin
       and (tg_op = 'INSERT' or id <> old.id);
 
     capacity := public.help_request_volunteer_capacity(
-        coalesce(request_record.priority_level, request_record.urgency_level)
+        request_record.urgency_level
     );
 
     if active_count >= capacity then
-        raise exception 'This request already has the maximum number of active volunteers for its priority.';
+        raise exception 'This request already has the maximum number of active volunteers for its urgency.';
     end if;
 
     return new;
@@ -188,11 +188,11 @@ begin
       and status in ('confirmed', 'in_progress');
 
     capacity := public.help_request_volunteer_capacity(
-        coalesce(request_record.priority_level, request_record.urgency_level)
+        request_record.urgency_level
     );
 
     if active_count >= capacity then
-        raise exception 'This request already has the maximum number of active volunteers for its priority.';
+        raise exception 'This request already has the maximum number of active volunteers for its urgency.';
     end if;
 
     insert into public.help_request_volunteers (
