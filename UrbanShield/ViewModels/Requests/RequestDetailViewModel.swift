@@ -32,7 +32,6 @@ final class RequestDetailViewModel {
     var cacheMessage: String?
 
     var editDescription = ""
-    var editUrgency: HelpRequestUrgency = .medium
     var editLatitude = ""
     var editLongitude = ""
 
@@ -129,7 +128,6 @@ final class RequestDetailViewModel {
         guard let request else { return }
 
         editDescription = request.description
-        editUrgency = request.urgencyValue
         editLatitude = coordinateEditText(request.latitude)
         editLongitude = coordinateEditText(request.longitude)
     }
@@ -176,7 +174,6 @@ final class RequestDetailViewModel {
                 .update(
                     RequestCitizenUpdate(
                         description: trimmedDescription,
-                        urgencyLevel: editUrgency.rawValue,
                         latitude: latitudeValue,
                         longitude: longitudeValue,
                         updatedAt: Date()
@@ -200,8 +197,8 @@ final class RequestDetailViewModel {
                 requestId: id,
                 message: "\(updatedRequest.requestTypeValue.title) request updated by citizen.",
                 metadata: [
-                    "old_urgency": previousRequest?.urgencyLevel ?? "",
-                    "new_urgency": updatedRequest.urgencyLevel
+                    "old_description": previousRequest?.description ?? "",
+                    "new_description": updatedRequest.description
                 ]
             )
 
@@ -570,6 +567,9 @@ final class RequestDetailViewModel {
             }
 
             let now = Date()
+            let updatedStatus = request.statusValue == .open
+                ? HelpRequestStatus.confirmed.rawValue
+                : request.statusValue.rawValue
 
             try await supabase
                 .from("help_request_volunteers")
@@ -587,7 +587,7 @@ final class RequestDetailViewModel {
                 .update(
                     RequestDetailCoordinatorAssignmentUpdate(
                         volunteerId: volunteer.id,
-                        status: HelpRequestStatus.confirmed.rawValue,
+                        status: updatedStatus,
                         confirmedAt: now,
                         updatedAt: now
                     )
@@ -595,7 +595,8 @@ final class RequestDetailViewModel {
                 .eq("id", value: request.id.uuidString)
                 .in("status", values: [
                     HelpRequestStatus.open.rawValue,
-                    HelpRequestStatus.confirmed.rawValue
+                    HelpRequestStatus.confirmed.rawValue,
+                    HelpRequestStatus.inProgress.rawValue
                 ])
                 .select()
                 .single()
@@ -622,7 +623,7 @@ final class RequestDetailViewModel {
                 coordinatorId: currentUser.id,
                 actionType: .volunteerAssigned,
                 oldValue: request.statusValue.rawValue,
-                newValue: HelpRequestStatus.confirmed.rawValue,
+                newValue: updatedStatus,
                 message: "\(volunteer.fullName) assigned to \(request.requestTypeValue.title)."
             )
 
@@ -636,7 +637,7 @@ final class RequestDetailViewModel {
                 message: "\(volunteer.fullName) assigned to \(request.requestTypeValue.title).",
                 metadata: [
                     "old_status": request.statusValue.rawValue,
-                    "new_status": HelpRequestStatus.confirmed.rawValue,
+                    "new_status": updatedStatus,
                     "volunteer_name": volunteer.fullName
                 ]
             )
@@ -891,11 +892,11 @@ final class RequestDetailViewModel {
                 .execute()
                 .value
 
-            activeVolunteerCount = activeAssignments.count
+            activeVolunteerCount = (try? await loadActiveVolunteerCount(for: request)) ?? activeAssignments.count
             let activeVolunteerIds = Set(activeAssignments.map(\.volunteerId))
 
             guard request.statusValue.acceptsVolunteers,
-                  activeAssignments.count < request.volunteerCapacity else {
+                  activeVolunteerCount < request.volunteerCapacity else {
                 availableVolunteers = []
                 return
             }
@@ -920,6 +921,18 @@ final class RequestDetailViewModel {
             activeVolunteerCount = 0
             availableVolunteers = []
         }
+    }
+
+    private func loadActiveVolunteerCount(for request: HelpRequestRecord) async throws -> Int {
+        let countRows: [RequestDetailActiveVolunteerCountRecord] = try await supabase
+            .rpc(
+                "get_help_request_active_volunteer_counts",
+                params: RequestDetailActiveVolunteerCountsParams(requestIds: [request.id])
+            )
+            .execute()
+            .value
+
+        return countRows.first?.activeVolunteerCount ?? 0
     }
 
     private func loadEvidence(requestId: UUID) async {
@@ -1081,14 +1094,12 @@ private enum EvidenceUploadError: LocalizedError {
 
 private struct RequestCitizenUpdate: Encodable {
     let description: String
-    let urgencyLevel: String
     let latitude: Double
     let longitude: Double
     let updatedAt: Date
 
     enum CodingKeys: String, CodingKey {
         case description
-        case urgencyLevel = "urgency_level"
         case latitude
         case longitude
         case updatedAt = "updated_at"
@@ -1172,6 +1183,24 @@ private struct RequestDetailVolunteerAssignmentInsert: Encodable {
         case requestId = "request_id"
         case volunteerId = "volunteer_id"
         case status
+    }
+}
+
+private struct RequestDetailActiveVolunteerCountsParams: Encodable {
+    let requestIds: [UUID]
+
+    enum CodingKeys: String, CodingKey {
+        case requestIds = "p_request_ids"
+    }
+}
+
+private struct RequestDetailActiveVolunteerCountRecord: Decodable {
+    let requestId: UUID
+    let activeVolunteerCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case requestId = "request_id"
+        case activeVolunteerCount = "active_volunteer_count"
     }
 }
 

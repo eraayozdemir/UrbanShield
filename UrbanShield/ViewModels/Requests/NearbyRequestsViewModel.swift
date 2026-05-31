@@ -59,7 +59,8 @@ final class NearbyRequestsViewModel {
                 .select()
                 .in("status", values: [
                     HelpRequestStatus.open.rawValue,
-                    HelpRequestStatus.confirmed.rawValue
+                    HelpRequestStatus.confirmed.rawValue,
+                    HelpRequestStatus.inProgress.rawValue
                 ])
                 .neq("citizen_id", value: currentUserId.uuidString)
                 .order("created_at", ascending: false)

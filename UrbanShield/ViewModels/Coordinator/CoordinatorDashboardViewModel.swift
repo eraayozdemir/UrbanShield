@@ -289,6 +289,9 @@ final class CoordinatorDashboardViewModel {
             }
 
             let now = Date()
+            let updatedStatus = request.statusValue == .open
+                ? HelpRequestStatus.confirmed.rawValue
+                : request.statusValue.rawValue
 
             try await supabase
                 .from("help_request_volunteers")
@@ -306,7 +309,7 @@ final class CoordinatorDashboardViewModel {
                 .update(
                     CoordinatorRequestAssignmentUpdate(
                         volunteerId: volunteer.id,
-                        status: HelpRequestStatus.confirmed.rawValue,
+                        status: updatedStatus,
                         confirmedAt: now,
                         updatedAt: now
                     )
@@ -314,7 +317,8 @@ final class CoordinatorDashboardViewModel {
                 .eq("id", value: request.id.uuidString)
                 .in("status", values: [
                     HelpRequestStatus.open.rawValue,
-                    HelpRequestStatus.confirmed.rawValue
+                    HelpRequestStatus.confirmed.rawValue,
+                    HelpRequestStatus.inProgress.rawValue
                 ])
                 .select()
                 .single()
@@ -337,7 +341,7 @@ final class CoordinatorDashboardViewModel {
                 coordinatorId: currentUser.id,
                 actionType: .volunteerAssigned,
                 oldValue: request.statusValue.rawValue,
-                newValue: HelpRequestStatus.confirmed.rawValue,
+                newValue: updatedStatus,
                 message: "\(volunteer.fullName) assigned to \(request.requestTypeValue.title)."
             )
 
@@ -352,7 +356,7 @@ final class CoordinatorDashboardViewModel {
                 message: "\(volunteer.fullName) assigned to \(request.requestTypeValue.title).",
                 metadata: [
                     "old_status": request.statusValue.rawValue,
-                    "new_status": HelpRequestStatus.confirmed.rawValue,
+                    "new_status": updatedStatus,
                     "volunteer_name": volunteer.fullName
                 ]
             )

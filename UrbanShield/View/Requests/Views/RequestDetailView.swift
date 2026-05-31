@@ -259,6 +259,11 @@ struct RequestDetailView: View {
                 RequestUrgencyChip(urgency: request.urgencyValue)
             }
 
+            VolunteerCapacitySummary(
+                activeCount: viewModel.activeVolunteerCount,
+                capacity: request.volunteerCapacity
+            )
+
             if shouldShowCoordinatorControls {
                 CoordinatorDetailControls(
                     request: request,
@@ -394,6 +399,75 @@ struct RequestDetailView: View {
 
             selectedEvidenceItem = nil
         }
+    }
+}
+
+private struct VolunteerCapacitySummary: View {
+    let activeCount: Int
+    let capacity: Int
+
+    private var safeCapacity: Int {
+        max(capacity, 1)
+    }
+
+    private var clampedActiveCount: Int {
+        min(max(activeCount, 0), safeCapacity)
+    }
+
+    private var progress: Double {
+        Double(clampedActiveCount) / Double(safeCapacity)
+    }
+
+    private var remainingText: String {
+        let remaining = max(safeCapacity - clampedActiveCount, 0)
+        return remaining == 0 ? "Capacity full" : "\(remaining) volunteer slot\(remaining == 1 ? "" : "s") available"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "person.2.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.blue)
+                    .frame(width: 28, height: 28)
+                    .background(.blue.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Volunteers")
+                        .font(.subheadline.weight(.semibold))
+                    Text(remainingText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+
+                Spacer()
+
+                Text("\(clampedActiveCount)/\(safeCapacity)")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .clipShape(Capsule())
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color(.secondarySystemGroupedBackground))
+                    Capsule()
+                        .fill(progress >= 1 ? .green : .blue)
+                        .frame(width: proxy.size.width * progress)
+                }
+            }
+            .frame(height: 7)
+        }
+        .padding(12)
+        .background(Color(.tertiarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
@@ -574,17 +648,6 @@ private struct EditRequestSheet: View {
                             .padding(10)
                             .background(Color(.tertiarySystemGroupedBackground))
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    }
-
-                    RequestCard {
-                        RequestSectionTitle(title: "Urgency", systemImage: "gauge.with.needle")
-
-                        Picker("Urgency", selection: $viewModel.editUrgency) {
-                            ForEach(HelpRequestUrgency.allCases) { urgency in
-                                Text(urgency.title).tag(urgency)
-                            }
-                        }
-                        .pickerStyle(.segmented)
                     }
 
                     RequestCard {

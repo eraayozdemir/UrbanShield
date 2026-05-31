@@ -92,7 +92,7 @@ enum HelpRequestStatus: String, CaseIterable, Identifiable, Codable {
     }
 
     var acceptsVolunteers: Bool {
-        self == .open || self == .confirmed
+        self == .open || self == .confirmed || self == .inProgress
     }
 }
 
