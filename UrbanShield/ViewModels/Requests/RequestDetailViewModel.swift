@@ -27,6 +27,7 @@ final class RequestDetailViewModel {
     var isUpdatingCoordinatorControls: Bool = false
     var isSavingUpdate: Bool = false
     var isUploadingEvidence: Bool = false
+    var isCancellingVolunteerTask: Bool = false
     var errorMessage: String?
     var successMessage: String?
     var cacheMessage: String?
@@ -383,6 +384,72 @@ final class RequestDetailViewModel {
         )
     }
 
+    func cancelVolunteerTask(id: UUID, currentUser: User?) async {
+        errorMessage = nil
+        successMessage = nil
+
+        guard let currentUser else {
+            errorMessage = "You must be signed in to cancel this task."
+            return
+        }
+
+        guard let request else {
+            errorMessage = "Request must be loaded before cancelling this task."
+            return
+        }
+
+        guard request.volunteerId == currentUser.id,
+              request.statusValue == .confirmed else {
+            errorMessage = "Only confirmed volunteer tasks can be cancelled before response starts."
+            return
+        }
+
+        isCancellingVolunteerTask = true
+        defer { isCancellingVolunteerTask = false }
+
+        do {
+            try await supabase
+                .rpc(
+                    "cancel_my_confirmed_volunteer_task",
+                    params: CancelVolunteerTaskParams(requestId: id)
+                )
+                .execute()
+
+            try? await ActivityLogger.log(
+                actor: currentUser,
+                action: .requestCancelled,
+                targetType: .request,
+                targetId: id,
+                requestId: id,
+                targetUserId: request.citizenId,
+                message: "\(currentUser.fullName) cancelled volunteer task for \(request.requestTypeValue.title).",
+                metadata: [
+                    "cancel_type": "volunteer_task",
+                    "old_status": request.statusValue.rawValue,
+                    "new_status": HelpRequestStatus.cancelled.rawValue
+                ]
+            )
+
+            try? await InAppNotificationService.notifyUser(
+                userId: request.citizenId,
+                actorId: currentUser.id,
+                title: "Volunteer cancelled",
+                message: "\(currentUser.fullName) cancelled their volunteer response for your \(request.requestTypeValue.title) request.",
+                category: .assignment,
+                linkType: .request,
+                linkId: id,
+                requestId: id
+            )
+
+            await loadRequest(id: id, currentUserId: currentUser.id)
+            successMessage = "Volunteer task cancelled. Your profile is available again."
+        } catch where error.isCancellation {
+            return
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func allowedCoordinatorStatusTargets(for request: HelpRequestRecord) -> [HelpRequestStatus] {
         switch request.statusValue {
         case .open:
@@ -434,25 +501,24 @@ final class RequestDetailViewModel {
         defer { isUpdatingCoordinatorControls = false }
 
         do {
-            let now = Date()
-            let updatedRequest: HelpRequestRecord = try await supabase
-                .from("help_requests")
-                .update(
-                    RequestDetailCoordinatorStatusUpdate(
-                        status: status.rawValue,
-                        updatedAt: now,
-                        completedAt: status == .completed ? now : nil
+            let updatedRequests: [HelpRequestRecord] = try await supabase
+                .rpc(
+                    "coordinator_update_help_request_status",
+                    params: CoordinatorStatusUpdateParams(
+                        requestId: request.id,
+                        status: status.rawValue
                     )
                 )
-                .eq("id", value: request.id.uuidString)
-                .select()
-                .single()
                 .execute()
                 .value
 
-            try await syncAssignmentsAndVolunteer(for: request, nextStatus: status, updatedAt: now)
+            guard let updatedRequest = updatedRequests.first else {
+                errorMessage = "Request could not be updated."
+                return
+            }
 
             self.request = updatedRequest
+            await loadCoordinatorAssignmentOptions(for: updatedRequest)
 
             try await insertCoordinationLog(
                 requestId: request.id,
@@ -566,53 +632,25 @@ final class RequestDetailViewModel {
                 return
             }
 
-            let now = Date()
             let updatedStatus = request.statusValue == .open
                 ? HelpRequestStatus.confirmed.rawValue
                 : request.statusValue.rawValue
 
-            try await supabase
-                .from("help_request_volunteers")
-                .insert(
-                    RequestDetailVolunteerAssignmentInsert(
+            let updatedRequests: [HelpRequestRecord] = try await supabase
+                .rpc(
+                    "coordinator_assign_volunteer_to_request",
+                    params: CoordinatorAssignVolunteerParams(
                         requestId: request.id,
-                        volunteerId: volunteer.id,
-                        status: HelpRequestStatus.confirmed.rawValue
+                        volunteerId: volunteer.id
                     )
                 )
-                .execute()
-
-            let updatedRequest: HelpRequestRecord = try await supabase
-                .from("help_requests")
-                .update(
-                    RequestDetailCoordinatorAssignmentUpdate(
-                        volunteerId: volunteer.id,
-                        status: updatedStatus,
-                        confirmedAt: now,
-                        updatedAt: now
-                    )
-                )
-                .eq("id", value: request.id.uuidString)
-                .in("status", values: [
-                    HelpRequestStatus.open.rawValue,
-                    HelpRequestStatus.confirmed.rawValue,
-                    HelpRequestStatus.inProgress.rawValue
-                ])
-                .select()
-                .single()
                 .execute()
                 .value
 
-            try await supabase
-                .from("profiles")
-                .update(
-                    RequestDetailAssignedVolunteerProfileUpdate(
-                        role: UserRole.volunteer.rawValue,
-                        availabilityStatus: VolunteerAvailability.busy.rawValue
-                    )
-                )
-                .eq("id", value: volunteer.id.uuidString)
-                .execute()
+            guard let updatedRequest = updatedRequests.first else {
+                errorMessage = "Volunteer could not be assigned."
+                return
+            }
 
             self.request = updatedRequest
             activeVolunteerCount = requestActiveAssignments.count + 1
@@ -1129,6 +1167,34 @@ private struct RequestCancellationUpdate: Encodable {
     enum CodingKeys: String, CodingKey {
         case status
         case updatedAt = "updated_at"
+    }
+}
+
+private struct CancelVolunteerTaskParams: Encodable {
+    let requestId: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case requestId = "p_request_id"
+    }
+}
+
+private struct CoordinatorStatusUpdateParams: Encodable {
+    let requestId: UUID
+    let status: String
+
+    enum CodingKeys: String, CodingKey {
+        case requestId = "p_request_id"
+        case status = "p_status"
+    }
+}
+
+private struct CoordinatorAssignVolunteerParams: Encodable {
+    let requestId: UUID
+    let volunteerId: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case requestId = "p_request_id"
+        case volunteerId = "p_volunteer_id"
     }
 }
 

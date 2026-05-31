@@ -122,14 +122,21 @@ final class AdminUserManagementViewModel {
         defer { updatingUserId = nil }
 
         do {
-            let updatedUser: ProfileUserRecord = try await supabase
-                .from("profiles")
-                .update(AdminSuspensionUpdate(isSuspended: isSuspended))
-                .eq("id", value: user.id.uuidString)
-                .select()
-                .single()
+            let updatedUsers: [ProfileUserRecord] = try await supabase
+                .rpc(
+                    "set_profile_suspension",
+                    params: AdminSuspensionParams(
+                        userId: user.id,
+                        isSuspended: isSuspended
+                    )
+                )
                 .execute()
                 .value
+
+            guard let updatedUser = updatedUsers.first else {
+                errorMessage = "User could not be updated."
+                return
+            }
 
             if let index = users.firstIndex(where: { $0.id == user.id }) {
                 users[index] = updatedUser
@@ -164,10 +171,12 @@ private struct AdminRoleUpdate: Encodable {
     let role: String
 }
 
-private struct AdminSuspensionUpdate: Encodable {
+private struct AdminSuspensionParams: Encodable {
+    let userId: UUID
     let isSuspended: Bool
 
     enum CodingKeys: String, CodingKey {
-        case isSuspended = "is_suspended"
+        case userId = "p_user_id"
+        case isSuspended = "p_is_suspended"
     }
 }

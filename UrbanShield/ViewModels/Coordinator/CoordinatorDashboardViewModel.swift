@@ -128,23 +128,21 @@ final class CoordinatorDashboardViewModel {
         defer { updatingRequestId = nil }
 
         do {
-            let now = Date()
-            let updatedRequest: HelpRequestRecord = try await supabase
-                .from("help_requests")
-                .update(
-                    CoordinatorRequestStatusUpdate(
-                        status: status.rawValue,
-                        updatedAt: now,
-                        completedAt: status == .completed ? now : nil
+            let updatedRequests: [HelpRequestRecord] = try await supabase
+                .rpc(
+                    "coordinator_update_help_request_status",
+                    params: CoordinatorStatusUpdateParams(
+                        requestId: request.id,
+                        status: status.rawValue
                     )
                 )
-                .eq("id", value: request.id.uuidString)
-                .select()
-                .single()
                 .execute()
                 .value
 
-            try await syncAssignmentsAndVolunteer(for: request, nextStatus: status, updatedAt: now)
+            guard let updatedRequest = updatedRequests.first else {
+                errorMessage = "Request could not be updated."
+                return
+            }
 
             try await insertLog(
                 requestId: request.id,
@@ -288,53 +286,25 @@ final class CoordinatorDashboardViewModel {
                 return
             }
 
-            let now = Date()
             let updatedStatus = request.statusValue == .open
                 ? HelpRequestStatus.confirmed.rawValue
                 : request.statusValue.rawValue
 
-            try await supabase
-                .from("help_request_volunteers")
-                .insert(
-                    CoordinatorVolunteerAssignmentInsert(
+            let updatedRequests: [HelpRequestRecord] = try await supabase
+                .rpc(
+                    "coordinator_assign_volunteer_to_request",
+                    params: CoordinatorAssignVolunteerParams(
                         requestId: request.id,
-                        volunteerId: volunteer.id,
-                        status: HelpRequestStatus.confirmed.rawValue
+                        volunteerId: volunteer.id
                     )
                 )
-                .execute()
-
-            let updatedRequest: HelpRequestRecord = try await supabase
-                .from("help_requests")
-                .update(
-                    CoordinatorRequestAssignmentUpdate(
-                        volunteerId: volunteer.id,
-                        status: updatedStatus,
-                        confirmedAt: now,
-                        updatedAt: now
-                    )
-                )
-                .eq("id", value: request.id.uuidString)
-                .in("status", values: [
-                    HelpRequestStatus.open.rawValue,
-                    HelpRequestStatus.confirmed.rawValue,
-                    HelpRequestStatus.inProgress.rawValue
-                ])
-                .select()
-                .single()
                 .execute()
                 .value
 
-            try await supabase
-                .from("profiles")
-                .update(
-                    CoordinatorAssignedVolunteerProfileUpdate(
-                        role: UserRole.volunteer.rawValue,
-                        availabilityStatus: VolunteerAvailability.busy.rawValue
-                    )
-                )
-                .eq("id", value: volunteer.id.uuidString)
-                .execute()
+            guard let updatedRequest = updatedRequests.first else {
+                errorMessage = "Volunteer could not be assigned."
+                return
+            }
 
             try await insertLog(
                 requestId: request.id,
@@ -620,6 +590,26 @@ private struct CoordinatorRequestStatusUpdate: Encodable {
         case status
         case updatedAt = "updated_at"
         case completedAt = "completed_at"
+    }
+}
+
+private struct CoordinatorStatusUpdateParams: Encodable {
+    let requestId: UUID
+    let status: String
+
+    enum CodingKeys: String, CodingKey {
+        case requestId = "p_request_id"
+        case status = "p_status"
+    }
+}
+
+private struct CoordinatorAssignVolunteerParams: Encodable {
+    let requestId: UUID
+    let volunteerId: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case requestId = "p_request_id"
+        case volunteerId = "p_volunteer_id"
     }
 }
 

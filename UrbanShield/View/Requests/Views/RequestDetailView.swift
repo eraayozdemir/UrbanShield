@@ -12,6 +12,7 @@ struct RequestDetailView: View {
 
     @State private var viewModel = RequestDetailViewModel()
     @State private var showCancelConfirmation = false
+    @State private var showVolunteerCancelConfirmation = false
     @State private var showEditSheet = false
     @State private var selectedEvidenceItem: PhotosPickerItem?
 
@@ -155,9 +156,29 @@ struct RequestDetailView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(viewModel.isUpdatingStatus)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
+
+                    if request.statusValue == .confirmed {
+                        Button(role: .destructive) {
+                            showVolunteerCancelConfirmation = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                if viewModel.isCancellingVolunteerTask {
+                                    ProgressView()
+                                } else {
+                                    Image(systemName: "xmark.circle.fill")
+                                    Text("Cancel Volunteer Task")
+                                        .fontWeight(.semibold)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: 50)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(viewModel.isUpdatingStatus || viewModel.isCancellingVolunteerTask)
+                    }
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
                 .background(.regularMaterial)
             }
         }
@@ -206,6 +227,21 @@ struct RequestDetailView: View {
             Button("Keep Request", role: .cancel) {}
         } message: {
             Text("This will mark your request as cancelled.")
+        }
+        .confirmationDialog(
+            "Cancel this volunteer task?",
+            isPresented: $showVolunteerCancelConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Cancel Volunteer Task", role: .destructive) {
+                Task {
+                    await viewModel.cancelVolunteerTask(id: requestId, currentUser: currentUser)
+                    await sessionViewModel.refreshCurrentUser()
+                }
+            }
+            Button("Keep Task", role: .cancel) {}
+        } message: {
+            Text("You can cancel before starting response. The citizen will be notified and your profile will return to citizen availability.")
         }
         .task {
             await reloadRequest()
@@ -299,7 +335,11 @@ struct RequestDetailView: View {
     }
 
     private func shouldShowCitizenControls(for request: HelpRequestRecord) -> Bool {
-        request.citizenId == currentUser?.id
+        guard currentUser?.role == .citizen || currentUser?.role == .volunteer else {
+            return false
+        }
+
+        return request.citizenId == currentUser?.id
             && request.statusValue != .completed
             && request.statusValue != .cancelled
     }
@@ -319,7 +359,15 @@ struct RequestDetailView: View {
     }
 
     private func bottomActionPadding(for request: HelpRequestRecord) -> CGFloat {
-        shouldShowCitizenControls(for: request) ? 148 : (shouldShowVolunteerAction(for: request) ? 86 : 16)
+        if shouldShowCitizenControls(for: request) {
+            return 148
+        }
+
+        if shouldShowVolunteerAction(for: request) {
+            return request.statusValue == .confirmed ? 148 : 86
+        }
+
+        return 16
     }
 
     private func volunteerActionTitle(for request: HelpRequestRecord) -> String {
