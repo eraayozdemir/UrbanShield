@@ -66,27 +66,7 @@ final class NearbyRequestsViewModel {
                 .execute()
                 .value
 
-            let openRequestIds = openRequests.map { $0.id.uuidString }
-            let allActiveAssignments: [HelpRequestVolunteerRecord]
-            if openRequestIds.isEmpty {
-                allActiveAssignments = []
-            } else {
-                allActiveAssignments = try await supabase
-                    .from("help_request_volunteers")
-                    .select()
-                    .in("request_id", values: openRequestIds)
-                    .in("status", values: [
-                        HelpRequestStatus.confirmed.rawValue,
-                        HelpRequestStatus.inProgress.rawValue
-                    ])
-                    .execute()
-                    .value
-            }
-
-            activeVolunteerCounts = Dictionary(
-                grouping: allActiveAssignments,
-                by: \.requestId
-            ).mapValues(\.count)
+            activeVolunteerCounts = try await loadActiveVolunteerCounts(for: openRequests)
 
             requests = openRequests.filter { request in
                 let activeVolunteerCount = activeVolunteerCounts[request.id] ?? 0
@@ -147,18 +127,14 @@ final class NearbyRequestsViewModel {
         defer { confirmingRequestId = nil }
 
         do {
-            let activeAssignments: [HelpRequestVolunteerRecord] = try await supabase
-                .from("help_request_volunteers")
-                .select()
-                .eq("volunteer_id", value: volunteer.id.uuidString)
-                .in("status", values: [
-                    HelpRequestStatus.confirmed.rawValue,
-                    HelpRequestStatus.inProgress.rawValue
-                ])
-                .execute()
-                .value
+            let acceptanceState = try await loadVolunteerAcceptanceState()
 
-            guard activeAssignments.isEmpty else {
+            guard acceptanceState.availabilityValue == .available else {
+                errorMessage = "You must be available before accepting a request."
+                return false
+            }
+
+            guard acceptanceState.activeAssignmentCount == 0 else {
                 errorMessage = "Complete your active volunteer task before accepting another request."
                 return false
             }
@@ -260,8 +236,49 @@ final class NearbyRequestsViewModel {
         "Offline mode: showing saved nearby requests from \(savedAt.formatted(date: .abbreviated, time: .shortened))."
     }
 
+    private func loadActiveVolunteerCounts(for requests: [HelpRequestRecord]) async throws -> [UUID: Int] {
+        let requestIds = requests.map(\.id)
+        guard !requestIds.isEmpty else { return [:] }
+
+        let countRows: [RequestActiveVolunteerCountRecord] = try await supabase
+            .rpc(
+                "get_help_request_active_volunteer_counts",
+                params: RequestActiveVolunteerCountsParams(requestIds: requestIds)
+            )
+            .execute()
+            .value
+
+        return Dictionary(
+            uniqueKeysWithValues: countRows.map { ($0.requestId, $0.activeVolunteerCount) }
+        )
+    }
+
+    private func loadVolunteerAcceptanceState() async throws -> VolunteerAcceptanceStateRecord {
+        let stateRows: [VolunteerAcceptanceStateRecord] = try await supabase
+            .rpc("get_my_volunteer_acceptance_state")
+            .execute()
+            .value
+
+        guard let state = stateRows.first else {
+            throw NearbyRequestsError.profileNotFound
+        }
+
+        return state
+    }
+
     func activeVolunteerCount(for request: HelpRequestRecord) -> Int {
         activeVolunteerCounts[request.id] ?? 0
+    }
+}
+
+private enum NearbyRequestsError: LocalizedError {
+    case profileNotFound
+
+    var errorDescription: String? {
+        switch self {
+        case .profileNotFound:
+            return "Profile could not be found."
+        }
     }
 }
 
@@ -270,5 +287,37 @@ private struct AcceptHelpRequestParams: Encodable {
 
     enum CodingKeys: String, CodingKey {
         case requestId = "p_request_id"
+    }
+}
+
+private struct RequestActiveVolunteerCountsParams: Encodable {
+    let requestIds: [UUID]
+
+    enum CodingKeys: String, CodingKey {
+        case requestIds = "p_request_ids"
+    }
+}
+
+private struct RequestActiveVolunteerCountRecord: Decodable {
+    let requestId: UUID
+    let activeVolunteerCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case requestId = "request_id"
+        case activeVolunteerCount = "active_volunteer_count"
+    }
+}
+
+private struct VolunteerAcceptanceStateRecord: Decodable {
+    let availabilityStatus: String
+    let activeAssignmentCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case availabilityStatus = "availability_status"
+        case activeAssignmentCount = "active_assignment_count"
+    }
+
+    var availabilityValue: VolunteerAvailability {
+        VolunteerAvailability(rawValue: availabilityStatus) ?? .available
     }
 }
