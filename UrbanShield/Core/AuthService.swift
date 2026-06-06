@@ -2,9 +2,9 @@
 //  AuthService.swift
 //  UrbanShield
 //
-//  Single point of contact for all auth and profile operations.
-//  Replaces: AuthRepository, UserRepository, all UseCases,
-//            AuthRemoteDataSource, UserRemoteDataSource, UserDTO, UserMapper.
+//  Tüm auth ve profile işlemleri için tek temas noktası.
+//  AuthRepository, UserRepository ve tüm UseCase katmanlarının yerine geçer,
+//            ayrıca AuthRemoteDataSource, UserRemoteDataSource, UserDTO ve UserMapper yerine kullanılır.
 //
 
 import Supabase
@@ -18,6 +18,8 @@ final class AuthService: Sendable {
 
     // MARK: - Auth
 
+    // Kayıt işlemi önce Supabase Auth kullanıcısı oluşturur, sonra eşleşen
+    // role dayalı yönlendirme için kullanılan profil satırını oluşturur.
     func signUp(email: String, password: String, fullName: String) async throws -> User {
         let response = try await supabase.auth.signUp(email: email, password: password)
         return try await createProfile(userId: response.user.id, email: email, fullName: fullName)
@@ -27,6 +29,7 @@ final class AuthService: Sendable {
         let response = try await supabase.auth.signIn(email: email, password: password)
         let user = try await fetchProfile(userId: response.user.id)
 
+        // Auth başarılı olsa bile suspended hesaplar uygulamaya devam edemez.
         if user.isSuspended {
             try? await signOut()
             throw AppError.authFailed("This account has been suspended. Please contact an administrator.")
@@ -74,6 +77,8 @@ final class AuthService: Sendable {
         availabilityStatus: VolunteerAvailability,
         skills: [VolunteerSkill]
     ) async throws -> User {
+        // Citizen volunteer ayarları. Availability ve skills,
+        // request kabul/atama işlemlerinde kullanılır.
         let session = try await supabase.auth.session
         let dto: ProfileDTO = try await supabase
             .from("profiles")
@@ -102,7 +107,7 @@ final class AuthService: Sendable {
         try await signOut()
     }
 
-    /// Returns nil when no session exists (app launch / logged out).
+    /// Oturum yoksa nil döndürür (uygulama açılışı / çıkış yapılmış durum).
     func currentUser() async throws -> User? {
         guard let session = try? await supabase.auth.session else { return nil }
         guard let user = try? await fetchProfile(userId: session.user.id) else { return nil }
@@ -118,6 +123,7 @@ final class AuthService: Sendable {
     // MARK: - Profile (private)
 
     private func fetchProfile(userId: UUID) async throws -> User {
+        // profiles tablosunu okur ve veritabanı DTO modelini app User modeline çevirir.
         let dto: ProfileDTO = try await supabase
             .from("profiles")
             .select()
@@ -129,6 +135,8 @@ final class AuthService: Sendable {
     }
 
     private func createProfile(userId: UUID, email: String, fullName: String) async throws -> User {
+        // Yeni kullanıcılar citizen olarak başlar. Admin/coordinator ataması
+        // daha sonra admin akışı veya Supabase tarafındaki privileged operations ile yapılır.
         let dto: ProfileDTO = try await supabase
             .from("profiles")
             .insert(ProfileInsertDTO(id: userId, email: email, fullName: fullName))
@@ -140,7 +148,7 @@ final class AuthService: Sendable {
     }
 }
 
-// MARK: - DTOs (private to this file — not exposed outside)
+// MARK: - DTOs (bu dosyaya private; dışarı açılmaz)
 
 private struct ProfileDTO: Codable {
     let id: UUID

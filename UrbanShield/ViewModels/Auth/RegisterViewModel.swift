@@ -10,6 +10,7 @@ import Observation
 @Observable
 final class RegisterViewModel {
 
+    // RegisterView bu alanları text inputlara bağlar.
     var fullName: String = ""
     var email: String = ""
     var password: String = ""
@@ -18,6 +19,7 @@ final class RegisterViewModel {
     var errorMessage: String?
     var didSignUp: Bool = false
 
+    // Sign-up ekranında gösterilen ve Supabase signUp öncesi kontrol edilen şifre kuralları.
     var passwordRequirements: [PasswordRequirement] {
         [
             PasswordRequirement(
@@ -52,6 +54,7 @@ final class RegisterViewModel {
     }
 
     var canSubmit: Bool {
+        // Submit butonunu yalnızca tüm lokal doğrulama kuralları geçerse aktif eder.
         !isLoading
             && !fullName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -77,12 +80,14 @@ final class RegisterViewModel {
         defer { isLoading = false }
 
         do {
+            // AuthService Auth kullanıcısını ve citizen profilini oluşturur.
             _ = try await AuthService.shared.signUp(
                 email: email,
                 password: password,
                 fullName: fullName
             )
             try? await AuthService.shared.signOut()
+            // Başarılı sign-up sonrası UI başarı alert’i gösterir ve login ekranına döner.
             didSignUp = true
             return true
         } catch {

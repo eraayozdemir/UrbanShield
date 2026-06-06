@@ -5,8 +5,8 @@
 
 import Foundation
 
-/// Centralized error type for the UrbanShield app.
-/// All layers (data, domain, presentation) use this for consistent error handling.
+/// UrbanShield uygulaması için merkezi hata tipi.
+/// Tüm katmanlar tutarlı hata yönetimi için bu tipi kullanır.
 enum AppError: LocalizedError {
 
     case authFailed(String)

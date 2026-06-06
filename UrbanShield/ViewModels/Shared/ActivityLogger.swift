@@ -89,6 +89,8 @@ struct ActivityLogRecord: Codable, Identifiable, Equatable {
 }
 
 enum ActivityLogger {
+    // activity_logs insert işlemleri için merkezi yardımcı. Ekranlar bunu
+    // başarılı işlemlerden sonra çağırır; böylece admin kimin neyi ne zaman yaptığını görebilir.
     @MainActor
     static func log(
         actor: User,
@@ -133,6 +135,8 @@ enum ActivityLogger {
         message: String,
         metadata: [String: String]? = nil
     ) async throws {
+        // Tam User modeli yerine yalnızca actor id/role mevcut olduğunda
+        // kullanılan overload.
         try await supabase
             .from("activity_logs")
             .insert(

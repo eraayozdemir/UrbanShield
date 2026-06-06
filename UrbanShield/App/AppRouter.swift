@@ -5,13 +5,15 @@
 
 import SwiftUI
 
-/// Resolves which home screen to show based on the authenticated user's role.
-/// Expand this in later phases to support deep links, sheet routing, etc.
+/// Giriş yapan kullanıcının rolüne göre hangi ana ekranın gösterileceğini çözer.
+/// Sonraki fazlarda deep link, sheet routing vb. desteklemek için burası genişletilebilir.
 struct AppRouter {
 
     @MainActor
     @ViewBuilder
     static func homeView(for role: UserRole, sessionViewModel: AuthSessionViewModel) -> some View {
+        // Bu switch uygulama seviyesindeki RBAC giriş noktasıdır.
+        // Gerçek güvenlik sınırı yine veritabanındaki RLS kurallarıdır.
         switch role {
         case .citizen:
             CitizenHomeView(sessionViewModel: sessionViewModel)

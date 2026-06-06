@@ -7,6 +7,7 @@ import Foundation
 import Supabase
 
 struct RealtimePostgresChangeRegistration {
+    // Bir ekranın dinlediği Postgres tablo/filter çiftini tanımlar.
     let table: String
     let filter: String?
 
@@ -18,6 +19,9 @@ struct RealtimePostgresChangeRegistration {
 
 @MainActor
 final class RealtimeRefreshSubscription {
+    // Near-realtime refresh ihtiyacı olan ekranlar için ortak yardımcı.
+    // Row payload verisini parse etmez; yalnızca ekranın load metodunu
+    // küçük bir throttle gecikmesinden sonra çağırır.
     private let throttleDelay: UInt64
     private var channel: RealtimeChannelV2?
     private var refreshTask: Task<Void, Never>?
@@ -38,6 +42,7 @@ final class RealtimeRefreshSubscription {
 
         let channel = supabase.channel(channelName)
         for registration in registrations {
+            // Kayıtlı tabloda yapılan herhangi bir insert/update/delete refresh planlar.
             channel.onPostgresChange(
                 AnyAction.self,
                 table: registration.table,
@@ -65,6 +70,8 @@ final class RealtimeRefreshSubscription {
     }
 
     private func scheduleRefresh() {
+        // Throttling, kısa sürede gelen birden fazla database eventinin
+        // birden fazla duplicate reload tetiklemesini engeller.
         guard refreshTask == nil else { return }
 
         refreshTask = Task { @MainActor [weak self] in

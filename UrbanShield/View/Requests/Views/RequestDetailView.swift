@@ -10,6 +10,8 @@ struct RequestDetailView: View {
     let requestId: UUID
     let sessionViewModel: AuthSessionViewModel
 
+    // Ekrana ait state: ViewModel data/business logic içerir;
+    // bu boolean değerler yalnızca sheet ve confirmation dialog kontrol eder.
     @State private var viewModel = RequestDetailViewModel()
     @State private var showCancelConfirmation = false
     @State private var showVolunteerCancelConfirmation = false
@@ -25,12 +27,15 @@ struct RequestDetailView: View {
 
     var body: some View {
         ZStack {
+            // Her request detail durumunun arkasındaki özellik arka planı.
             RequestUI.background
                 .ignoresSafeArea()
 
             if viewModel.isLoading && viewModel.request == nil {
                 DetailLoadingView()
             } else if let request = viewModel.request {
+                // Ana scroll içeriği: header, lifecycle/status, description,
+                // evidence, location ve timestamp alanları.
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         detailHeader(request)
@@ -95,6 +100,8 @@ struct RequestDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
             if let request = viewModel.request, shouldShowCitizenControls(for: request) {
+                // Citizen owner aksiyonları. Coordinator/admin için,
+                // owner olmayan kullanıcılar, completed ve cancelled requestler için gizlenir.
                 VStack(spacing: 10) {
                     Button {
                         viewModel.prepareEditForm()
@@ -130,6 +137,8 @@ struct RequestDetailView: View {
                 .padding(.bottom, 8)
                 .background(.regularMaterial)
             } else if let request = viewModel.request, shouldShowVolunteerAction(for: request) {
+                // Assigned volunteer aksiyonları. Buton başlığı
+                // lifecycle state değerine göre değişir: confirmed response başlatır, in_progress tamamlar.
                 VStack(spacing: 10) {
                     Button {
                         Task {
@@ -184,6 +193,7 @@ struct RequestDetailView: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                // Realtime olsa bile demo sırasında manuel refresh faydalıdır.
                 Button {
                     Task {
                         await reloadRequest()
@@ -195,6 +205,7 @@ struct RequestDetailView: View {
             }
         }
         .overlay(alignment: .bottom) {
+            // Error, offline cache notice ve success mesajları için tek feedback alanı.
             if let error = viewModel.errorMessage {
                 RequestErrorBanner(message: error)
             } else if let cacheMessage = viewModel.cacheMessage {
@@ -204,6 +215,7 @@ struct RequestDetailView: View {
             }
         }
         .sheet(isPresented: $showEditSheet) {
+            // Citizen update sheet yalnızca description ve coordinates alanlarını düzenler.
             EditRequestSheet(viewModel: viewModel) {
                 Task {
                     let didUpdate = await viewModel.updateRequest(id: requestId, currentUser: currentUser)
@@ -244,6 +256,7 @@ struct RequestDetailView: View {
             Text("You can cancel before starting response. The citizen will be notified and your profile will return to citizen availability.")
         }
         .task {
+            // İlk veri yüklemesi ve request-specific realtime aboneliği.
             await reloadRequest()
             await viewModel.startRealtime(id: requestId, currentUserId: currentUser?.id)
         }
@@ -288,6 +301,9 @@ struct RequestDetailView: View {
 
     private func statusSection(_ request: HelpRequestRecord) -> some View {
         RequestCard {
+            // Detail ekranının üstündeki status card alanını oluşturur.
+            // İçinde chipler, volunteer capacity, coordinator controls
+            // ve request lifecycle bar bulunur.
             RequestSectionTitle(title: "Status", systemImage: "checklist")
 
             HStack(spacing: 10) {
@@ -301,6 +317,8 @@ struct RequestDetailView: View {
             )
 
             if shouldShowCoordinatorControls {
+                // Detail içindeki coordinator/admin kontrolleri. Jüri başka bir coordinator aksiyonu isterse
+                // değiştirilecek yer burasıdır.
                 CoordinatorDetailControls(
                     request: request,
                     statusTargets: viewModel.allowedCoordinatorStatusTargets(for: request),
@@ -383,6 +401,7 @@ struct RequestDetailView: View {
         let canUploadMoreEvidence = viewModel.canUploadMoreEvidence
 
         return RequestCard {
+            // Evidence kartı: yüklenen foto metadata bilgisini ve Add Photo butonunu gösterir.
             HStack(alignment: .firstTextBaseline) {
                 RequestSectionTitle(title: "Evidence", systemImage: "photo.on.rectangle.angled")
                 Spacer()

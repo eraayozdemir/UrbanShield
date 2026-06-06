@@ -5,8 +5,8 @@
 
 import Foundation
 
-/// The domain model representing an authenticated user with a profile.
-/// This is what the app works with — no Supabase types leak into the domain.
+/// Profil bilgisiyle birlikte oturum açmış kullanıcıyı temsil eden domain modeli.
+/// Uygulama bu modelle çalışır; Supabase tipleri domain katmanına sızmaz.
 struct User: Equatable, Sendable {
     let id: UUID
     let email: String

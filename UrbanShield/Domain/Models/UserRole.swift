@@ -3,8 +3,8 @@
 //  UrbanShield
 //
 
-/// Represents the access level of a user in the system.
-/// Stored as a String in Supabase (e.g. "citizen", "volunteer", etc.)
+/// Kullanıcının sistemdeki erişim seviyesini temsil eder.
+/// Supabase tarafında String olarak saklanır (örn. "citizen", "volunteer" vb.).
 enum UserRole: String, Codable, CaseIterable, Sendable {
     case citizen
     case volunteer

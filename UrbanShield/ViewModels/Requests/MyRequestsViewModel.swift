@@ -76,7 +76,7 @@ final class MyRequestsViewModel {
                 await self?.loadRequests(citizenId: citizenId)
             }
         } catch {
-            // Manual refresh remains available if realtime is temporarily unavailable.
+            // Realtime geçici olarak çalışmazsa manuel yenileme kullanılmaya devam eder.
         }
     }
 

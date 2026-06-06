@@ -11,6 +11,9 @@ import Supabase
 @Observable
 final class NearbyRequestsViewModel {
 
+    // Nearby içinde mevcut kullanıcıya görünen requestler. Liste
+    // kullanıcının kendi requestlerini, dolu requestleri ve kullanıcının zaten kabul ettiği requestleri
+    // hariç tutar.
     var requests: [HelpRequestRecord] = []
     var activeVolunteerCounts: [UUID: Int] = [:]
     var isLoading: Bool = false
@@ -21,6 +24,9 @@ final class NearbyRequestsViewModel {
     private let realtimeSubscription = RealtimeRefreshSubscription()
     private var pollingTask: Task<Void, Never>?
 
+    // Active requestleri yükler ve volunteer-capacity kurallarını client tarafında uygular.
+    // Database/RPC aynı kuralları yine uygular; bu nedenle bu yalnızca UI filtering işlemidir,
+    // güvenlik sınırı değildir.
     func loadOpenRequests(currentUserId: UUID?) async {
         errorMessage = nil
         cacheMessage = nil
@@ -41,6 +47,8 @@ final class NearbyRequestsViewModel {
         defer { isLoading = false }
 
         do {
+            // Önce mevcut kullanıcının zaten active task sahibi olup olmadığını kontrol eder.
+            // Accepted requestler Nearby listesinden kaldırılır çünkü Tasks ekranına aittir.
             let acceptedAssignments: [HelpRequestVolunteerRecord] = try await supabase
                 .from("help_request_volunteers")
                 .select()
@@ -69,6 +77,9 @@ final class NearbyRequestsViewModel {
 
             activeVolunteerCounts = try await loadActiveVolunteerCounts(for: openRequests)
 
+            // UI seviyesi capacity kontrolü: critical requestler kapasitesi dolana kadar
+            // görünür kalabilir; lower urgency requestler normalde
+            // bir active volunteer sonrası kaybolur.
             requests = openRequests.filter { request in
                 let activeVolunteerCount = activeVolunteerCounts[request.id] ?? 0
                 return request.statusValue.acceptsVolunteers
@@ -128,6 +139,8 @@ final class NearbyRequestsViewModel {
         defer { confirmingRequestId = nil }
 
         do {
+            // Güncel backend state, eski UI verisiyle request kabul edilmesini engeller.
+            // İki cihaz aynı requesti test ederken bu önemlidir.
             let acceptanceState = try await loadVolunteerAcceptanceState()
 
             guard acceptanceState.availabilityValue == .available else {
@@ -203,13 +216,15 @@ final class NearbyRequestsViewModel {
                 await self?.loadOpenRequests(currentUserId: currentUserId)
             }
         } catch {
-            // Manual refresh remains available if realtime is temporarily unavailable.
+            // Realtime geçici olarak çalışmazsa manuel yenileme kullanılmaya devam eder.
         }
     }
 
     func startPollingFallback(currentUserId: UUID?) {
         guard let currentUserId, pollingTask == nil else { return }
 
+        // Polling demo/free-plan güvenilirliği için düşük maliyetli yedek yöntemdir.
+        // Realtime değişiklikleri iletmezse ekranı her 10 saniyede bir yeniler.
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
                 do {

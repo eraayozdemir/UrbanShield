@@ -202,7 +202,7 @@ final class NotificationsViewModel {
                 await self?.load(currentUser: currentUser)
             }
         } catch {
-            // Manual refresh remains available if realtime is unavailable.
+            // Realtime kullanılamazsa manuel yenileme kullanılmaya devam eder.
         }
     }
 

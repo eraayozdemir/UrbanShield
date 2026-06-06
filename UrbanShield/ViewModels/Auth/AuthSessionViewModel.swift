@@ -11,6 +11,8 @@ import Supabase
 @Observable
 final class AuthSessionViewModel {
 
+    // Kök oturum durumu. RootView/ContentView bunu kullanarak
+    // login ekranlarının mı yoksa role dayalı giriş yapılmış uygulamanın mı gösterileceğine karar verir.
     var session: AppSession = .loading
     var errorMessage: String?
     var isPasswordRecoveryFlow = false
@@ -19,6 +21,8 @@ final class AuthSessionViewModel {
     private var observeAuthChangesTask: Task<Void, Never>?
 
     init() {
+        // Kullanıcı reset linkini açtığında Supabase passwordRecovery event’i gönderir.
+        // Uygulama daha sonra PasswordRecoveryView ekranına yönlenir.
         observeAuthChangesTask = Task { [weak self] in
             for await (event, _) in supabase.auth.authStateChanges {
                 guard let self else { return }
@@ -35,6 +39,8 @@ final class AuthSessionViewModel {
     }
 
     func restoreSession() async {
+        // Uygulama açılışında çağrılır. Supabase oturumu hâlâ varsa
+        // ilgili profil satırını çeker ve giriş yapılmış uygulama durumunu geri yükler.
         session = .loading
         if let user = try? await AuthService.shared.currentUser() {
             session = .authenticated(user)
@@ -48,6 +54,8 @@ final class AuthSessionViewModel {
     }
 
     func refreshCurrentUser() async {
+        // Request kabul etme veya volunteer task tamamlama gibi role/availability
+        // değişikliklerinden sonra profili yeniden çeker.
         if let user = try? await AuthService.shared.currentUser() {
             session = .authenticated(user)
         }
@@ -68,6 +76,7 @@ final class AuthSessionViewModel {
     }
 
     func signOut() async {
+        // Supabase oturumunu bitirir ve RootView’i unauthenticated akışa döndürür.
         do {
             try await AuthService.shared.signOut()
             session = .unauthenticated

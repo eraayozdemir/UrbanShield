@@ -12,15 +12,20 @@ import UIKit
 @Observable
 final class RequestDetailViewModel {
 
+    // Detail ekranında kullanılan evidence upload limitleri.
+    // SQL/storage politikaları da bu limitlere izin vermelidir.
     private let evidenceBucket = "request-evidence"
     private let maxEvidenceCount = 3
     private let maxEvidenceBytes = 5_000_000
     private let realtimeSubscription = RealtimeRefreshSubscription()
 
+    // RequestDetailView tarafından gösterilen veri.
     var request: HelpRequestRecord?
     var evidenceItems: [RequestEvidenceViewState] = []
     var availableVolunteers: [ProfileUserRecord] = []
     var activeVolunteerCount: Int = 0
+
+    // Loading/action flag değerleri progress indicator ve disabled button durumlarını yönetir.
     var isLoading: Bool = false
     var isCancelling: Bool = false
     var isUpdatingStatus: Bool = false
@@ -32,6 +37,8 @@ final class RequestDetailViewModel {
     var successMessage: String?
     var cacheMessage: String?
 
+    // Citizen update form durumu. Request type/urgency bilerek
+    // burada editable değildir; escalation coordinator priority/status mantığına aittir.
     var editDescription = ""
     var editLatitude = ""
     var editLongitude = ""
@@ -53,6 +60,7 @@ final class RequestDetailViewModel {
         defer { isLoading = false }
 
         do {
+            // help_requests tablosundan gelen ana request satırı.
             let loadedRequests: [HelpRequestRecord] = try await supabase
                 .from("help_requests")
                 .select()
@@ -69,6 +77,8 @@ final class RequestDetailViewModel {
             if let currentUserId,
                loadedRequest.citizenId != currentUserId,
                let assignment = try await loadAssignment(requestId: id, volunteerId: currentUserId) {
+                // Mevcut kullanıcı volunteer ise assignment status değerini
+                // bu detail ekranında görünen lifecycle durumu olarak göster.
                 request = loadedRequest.applyingVolunteerAssignment(assignment)
             } else {
                 request = loadedRequest
@@ -95,6 +105,8 @@ final class RequestDetailViewModel {
 
     func startRealtime(id: UUID, currentUserId: UUID?) async {
         do {
+            // Request, assignment veya evidence satırları
+            // başka kullanıcı/cihaz tarafından değiştirildiğinde detail ekranını yeniler.
             try await realtimeSubscription.start(
                 channelName: "request-detail-\(id.uuidString)",
                 registrations: [
@@ -115,7 +127,7 @@ final class RequestDetailViewModel {
                 await self?.loadRequest(id: id, currentUserId: currentUserId)
             }
         } catch {
-            // Manual refresh remains available if realtime is temporarily unavailable.
+            // Realtime geçici olarak çalışmazsa manuel yenileme kullanılmaya devam eder.
         }
     }
 
@@ -170,6 +182,8 @@ final class RequestDetailViewModel {
 
         do {
             let previousRequest = request
+            // Citizen yalnızca kendi active request açıklamasını/konumunu güncelleyebilir.
+            // RLS ve query filtreleri başka bir kullanıcının request kaydını düzenlemeyi engeller.
             let updatedRequest: HelpRequestRecord = try await supabase
                 .from("help_requests")
                 .update(
@@ -241,6 +255,8 @@ final class RequestDetailViewModel {
         defer { isUploadingEvidence = false }
 
         do {
+            // Storage kullanımını küçük tutmak için fotoğraflar upload öncesi sıkıştırılır
+            // bu özellikle free/demo Supabase planı için önemlidir.
             let jpegData = try compressedJPEGData(from: imageData)
             let fileName = sanitizedEvidenceFileName(originalFileName)
             let requestPathId = request.id.uuidString.lowercased()
@@ -260,6 +276,8 @@ final class RequestDetailViewModel {
                     )
                 )
 
+            // Metadata RPC üzerinden oluşturulur; böylece RLS
+            // uploader kullanıcısının request owner veya assigned volunteer olup olmadığını doğrulayabilir.
             let insertedRows: [RequestEvidenceRecord] = try await supabase
                 .rpc(
                     "create_request_evidence_record",
@@ -324,6 +342,8 @@ final class RequestDetailViewModel {
         do {
             let now = Date()
             let previousRequest = request
+            // Citizen cancellation önce request satırını değiştirir, sonra
+            // aynı request için active volunteer assignment kayıtlarını kapatır.
             let cancelledRequest: HelpRequestRecord = try await supabase
                 .from("help_requests")
                 .update(RequestCancellationUpdate(status: HelpRequestStatus.cancelled.rawValue, updatedAt: now))
@@ -365,6 +385,7 @@ final class RequestDetailViewModel {
     }
 
     func startVolunteerWork(id: UUID, currentUser: User?) async {
+        // confirmed -> in_progress
         await updateVolunteerStatus(
             id: id,
             currentUser: currentUser,
@@ -375,6 +396,7 @@ final class RequestDetailViewModel {
     }
 
     func completeVolunteerWork(id: UUID, currentUser: User?) async {
+        // in_progress -> completed
         await updateVolunteerStatus(
             id: id,
             currentUser: currentUser,
@@ -408,6 +430,8 @@ final class RequestDetailViewModel {
         defer { isCancellingVolunteerTask = false }
 
         do {
+            // Volunteer response başlamadan önce görevden ayrılabilir. RPC
+            // availability durumunu boşa çıkarır ve başka volunteer için kapasite açar.
             try await supabase
                 .rpc(
                     "cancel_my_confirmed_volunteer_task",
@@ -451,6 +475,8 @@ final class RequestDetailViewModel {
     }
 
     func allowedCoordinatorStatusTargets(for request: HelpRequestRecord) -> [HelpRequestStatus] {
+        // Coordinator geçişleri bilinçli olarak sınırlandırılmıştır; böylece kullanıcılar
+        // open durumundan doğrudan completed durumuna atlayamaz.
         switch request.statusValue {
         case .open:
             return [.cancelled]
@@ -470,6 +496,8 @@ final class RequestDetailViewModel {
         }
 
         return availableVolunteers.filter { volunteer in
+            // Eşleşme kuralı: available, suspended değil ve en az bir skill sahibi olmalı;
+            // bu skill seçili request type değerini desteklemelidir.
             volunteer.id != request.citizenId
                 && volunteer.availabilityValue == .available
                 && !volunteer.isSuspendedValue
@@ -501,6 +529,8 @@ final class RequestDetailViewModel {
         defer { isUpdatingCoordinatorControls = false }
 
         do {
+            // Status değişiklikleri RPC kullanır çünkü completion/cancellation işlemleri
+            // request, assignments, volunteer availability ve logs kayıtlarını güncellemeyi gerektirebilir.
             let updatedRequests: [HelpRequestRecord] = try await supabase
                 .rpc(
                     "coordinator_update_help_request_status",
@@ -600,6 +630,8 @@ final class RequestDetailViewModel {
         defer { isUpdatingCoordinatorControls = false }
 
         do {
+            // Assignment RPC çağrısından önce active assignment kayıtlarını yeniden kontrol eder.
+            // Bu, ekran yüklendikten sonra busy olan bir volunteer atanmasını engeller.
             let activeAssignments: [HelpRequestVolunteerRecord] = try await supabase
                 .from("help_request_volunteers")
                 .select()
@@ -722,6 +754,8 @@ final class RequestDetailViewModel {
         defer { isUpdatingStatus = false }
 
         do {
+            // Assignment satırı mevcut kullanıcının bu task için
+            // start/complete işlemi yapmaya yetkili olduğunu kanıtlar.
             guard let assignment = try await loadAssignment(requestId: id, volunteerId: currentUser.id),
                   assignment.statusValue == currentStatus else {
                 errorMessage = errorText
@@ -731,6 +765,8 @@ final class RequestDetailViewModel {
             let now = Date()
 
             if nextStatus == .inProgress {
+                // Response başlatma hem assignment satırını hem de
+                // request satırını günceller; böylece coordinators/citizens in_progress görür.
                 try await supabase
                     .from("help_request_volunteers")
                     .update(
@@ -761,6 +797,8 @@ final class RequestDetailViewModel {
                     ])
                     .execute()
             } else {
+                // Completion RPC kullanır çünkü assignment kayıtlarını tamamlamalı,
+                // request status değerini güncellemeli ve volunteer availability durumunu boşa çıkarmalıdır.
                 try await supabase
                     .rpc(
                         "complete_my_volunteer_task",
@@ -919,6 +957,8 @@ final class RequestDetailViewModel {
 
     private func loadCoordinatorAssignmentOptions(for request: HelpRequestRecord) async {
         do {
+            // Mevcut active volunteers ve potansiyel available volunteers kayıtlarını
+            // detail ekranındaki coordinator controls için yükler.
             let activeAssignments: [HelpRequestVolunteerRecord] = try await supabase
                 .from("help_request_volunteers")
                 .select()
@@ -962,6 +1002,8 @@ final class RequestDetailViewModel {
     }
 
     private func loadActiveVolunteerCount(for request: HelpRequestRecord) async throws -> Int {
+        // RPC, list ekranlarıyla aynı veritabanı mantığını kullanarak
+        // active volunteer sayılarını döndürür ve görsel sayı tutarsızlığını önler.
         let countRows: [RequestDetailActiveVolunteerCountRecord] = try await supabase
             .rpc(
                 "get_help_request_active_volunteer_counts",
@@ -975,6 +1017,8 @@ final class RequestDetailViewModel {
 
     private func loadEvidence(requestId: UUID) async {
         do {
+            // Evidence listesi önce metadata okur, sonra image preview için
+            // geçici signed URL oluşturur. Public bucket erişimi gerekmez.
             let records: [RequestEvidenceRecord] = try await supabase
                 .from("request_evidence")
                 .select()
@@ -1052,6 +1096,7 @@ final class RequestDetailViewModel {
         var quality: CGFloat = 0.78
         var output = image.jpegData(compressionQuality: quality)
 
+        // Dosya limitin altına inene kadar JPEG kalitesini kademeli olarak düşürür.
         while let currentOutput = output,
               currentOutput.count > maxEvidenceBytes,
               quality > 0.24 {

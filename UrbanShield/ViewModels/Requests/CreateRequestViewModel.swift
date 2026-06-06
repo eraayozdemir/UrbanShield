@@ -11,16 +11,20 @@ import Supabase
 @Observable
 final class CreateRequestViewModel {
 
+    // Doğrudan CreateRequestView kontrollerine bağlanan form alanları.
     var requestType: HelpRequestType = .earthquake
     var urgencyLevel: HelpRequestUrgency = .medium
     var description: String = ""
     var latitude: String = ""
     var longitude: String = ""
 
+    // Progress indicator, error banner ve success routing için kullanılan UI state.
     var isLoading: Bool = false
     var errorMessage: String?
     var didSubmit: Bool = false
 
+    // Citizen formunu doğrular ve help_requests içine yeni satır ekler.
+    // Bu ana Phase 2 request creation akışıdır.
     func submit(currentUser: User?) async -> Bool {
         errorMessage = nil
         didSubmit = false
@@ -52,6 +56,8 @@ final class CreateRequestViewModel {
         defer { isLoading = false }
 
         do {
+            // Supabase kolonları snake_case olduğu için payload aşağıdaki CodingKeys
+            // ile citizen_id, request_type, urgency_level vb. isimlere eşlenir.
             let payload = HelpRequestInsertPayload(
                 citizenId: currentUser.id,
                 requestType: requestType.rawValue,
@@ -85,6 +91,8 @@ final class CreateRequestViewModel {
             )
 
             if inserted.urgencyValue == .critical {
+                // Critical requestler operasyonel kullanıcılara bildirim gönderir; böylece coordinatorlar
+                // demo/acil durum akışında bunları hızlıca önceliklendirebilir.
                 try? await InAppNotificationService.notifyCoordinatorsAndAdmins(
                     actorId: currentUser.id,
                     title: "Critical request created",
@@ -116,6 +124,8 @@ final class CreateRequestViewModel {
     }
 }
 
+// Supabase için insert DTO. Yalnızca bu ViewModel doğrudan
+// help request satırı oluşturduğu için private tutulur.
 private struct HelpRequestInsertPayload: Encodable {
     let citizenId: UUID
     let requestType: String

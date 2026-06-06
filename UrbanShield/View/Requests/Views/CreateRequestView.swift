@@ -10,6 +10,8 @@ import SwiftUI
 struct CreateRequestView: View {
     let sessionViewModel: AuthSessionViewModel
 
+    // ViewModel form verisini ve submit mantığını tutar; local state
+    // map picker, GPS overwrite davranışı ve keyboard focus durumunu yönetir.
     @State private var viewModel = CreateRequestViewModel()
     @StateObject private var locationService = DeviceLocationService()
     @State private var isShowingMapPicker = false
@@ -33,23 +35,28 @@ struct CreateRequestView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                // Üst başlık/alt başlık alanı.
                 header
+                // Mevcut request type ve urgency bilgisini gösteren küçük preview card.
                 DraftSummaryCard(
                     requestType: viewModel.requestType,
                     urgency: viewModel.urgencyLevel
                 )
 
                 RequestCard {
+                    // Emergency type seçim grid alanı.
                     RequestSectionTitle(title: "Emergency Type", systemImage: "square.grid.2x2")
                     RequestTypeGrid(selection: $viewModel.requestType)
                 }
 
                 RequestCard {
+                    // Urgency seçim grid alanı.
                     RequestSectionTitle(title: "Urgency Level", systemImage: "gauge.with.needle")
                     UrgencyGrid(selection: $viewModel.urgencyLevel)
                 }
 
                 RequestCard {
+                    // Çok satırlı incident description input alanı.
                     RequestSectionTitle(title: "Situation Details", systemImage: "text.alignleft")
 
                     TextEditor(text: $viewModel.description)
@@ -72,6 +79,8 @@ struct CreateRequestView: View {
                 }
 
                 RequestCard {
+                    // Location bölümü: mevcut GPS konumunu kullanma, map üzerinden seçme veya
+                    // latitude/longitude değerlerini manuel girme.
                     HStack {
                         RequestSectionTitle(title: "Location", systemImage: "location.fill")
                         Spacer()
@@ -149,6 +158,7 @@ struct CreateRequestView: View {
         .navigationTitle("Create Request")
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
+            // Validation/error feedback içeren sabit alt submit alanı.
             VStack(spacing: 10) {
                 if let error = viewModel.errorMessage {
                     RequestErrorBanner(message: error)

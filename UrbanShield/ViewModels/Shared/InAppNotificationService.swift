@@ -22,6 +22,9 @@ enum InAppNotificationLinkType: String, Codable {
 }
 
 enum InAppNotificationService {
+    // Belirli bir kullanıcı için tek bir notification oluşturur.
+    // Citizen’a request’inin kabul edildiği,
+    // cancelled/completed olduğu veya değiştiği bildirilmesi gerektiğinde kullanılır.
     @MainActor
     static func notifyUser(
         userId: UUID,
@@ -65,6 +68,8 @@ enum InAppNotificationService {
         let uniqueUserIds = Array(Set(userIds))
         guard !uniqueUserIds.isEmpty else { return }
 
+        // Notification oluşturma SQL RPC’ye devredilir; böylece duplicate recipient,
+        // RLS ve insert yapısı Supabase tarafında merkezi kalır.
         try await supabase
             .rpc(
                 "create_in_app_notifications",
@@ -98,6 +103,8 @@ enum InAppNotificationService {
         reportId: UUID? = nil,
         announcementId: UUID? = nil
     ) async throws {
+        // Seçilen rollerdeki tüm kullanıcıları bulur, ardından notification satırlarını oluşturur.
+        // Örnek: critical request -> coordinators ve admins.
         let recipients: [NotificationRecipientRecord] = try await supabase
             .rpc(
                 "notification_recipient_ids_for_roles",

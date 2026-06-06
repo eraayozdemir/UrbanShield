@@ -11,6 +11,8 @@ import Supabase
 @Observable
 final class AdminModerationViewModel {
 
+    // Her satır bir suspicious report kaydını ilgili reporter/request verisiyle birleştirir;
+    // böylece moderation ekranı ekstra navigasyon olmadan bağlam gösterebilir.
     var rows: [AdminModerationRow] = []
     var actions: [ModerationActionRecord] = []
     var moderationNote = ""
@@ -47,6 +49,8 @@ final class AdminModerationViewModel {
         defer { isLoading = false }
 
         do {
+            // Reports, users, linked requests ve son moderation action kayıtlarını
+            // tek ekran yenilemesinde yükler.
             let reports: [SuspiciousActivityReportRecord] = try await supabase
                 .from("suspicious_activity_reports")
                 .select()
@@ -115,6 +119,8 @@ final class AdminModerationViewModel {
         defer { updatingReportId = nil }
 
         do {
+            // Admin incelemesi suspicious report status değerini değiştirir ve hem
+            // moderation_actions hem de activity_logs kayıtlarını izlenebilirlik için oluşturur.
             let updated: SuspiciousActivityReportRecord = try await supabase
                 .from("suspicious_activity_reports")
                 .update(
@@ -212,6 +218,7 @@ final class AdminModerationViewModel {
 
         do {
             let now = Date()
+            // Admin, moderation ekranından kötüye kullanılan veya geçersiz bağlı request’i iptal edebilir.
             let updatedRequest: HelpRequestRecord = try await supabase
                 .from("help_requests")
                 .update(AdminRequestCancellationUpdate(status: HelpRequestStatus.cancelled.rawValue, updatedAt: now))

@@ -11,6 +11,7 @@ import Supabase
 @Observable
 final class CoordinatorDashboardViewModel {
 
+    // Coordinator/admin kullanıcılarına gösterilen dashboard verisi.
     var requests: [HelpRequestRecord] = []
     var availableVolunteers: [ProfileUserRecord] = []
     var activeVolunteerCounts: [UUID: Int] = [:]
@@ -21,6 +22,8 @@ final class CoordinatorDashboardViewModel {
     var successMessage: String?
     private let realtimeSubscription = RealtimeRefreshSubscription()
 
+    // Operasyonel takip için tüm request kayıtlarını yükler. Citizen ekranlarından farklı olarak,
+    // coordinator/admin completed/cancelled kayıtları da görebilir.
     func loadRequests(currentUser: User?) async {
         errorMessage = nil
         successMessage = nil
@@ -35,6 +38,7 @@ final class CoordinatorDashboardViewModel {
         defer { isLoading = false }
 
         do {
+            // Temel request listesi.
             let loadedRequests: [HelpRequestRecord] = try await supabase
                 .from("help_requests")
                 .select()
@@ -47,6 +51,7 @@ final class CoordinatorDashboardViewModel {
             if requestIds.isEmpty {
                 activeAssignments = []
             } else {
+                // Aktif assignment sayıları 0/1, 2/3 vb. şekilde gösterilir.
                 activeAssignments = try await supabase
                     .from("help_request_volunteers")
                     .select()
@@ -85,6 +90,8 @@ final class CoordinatorDashboardViewModel {
         guard currentUser?.role == .coordinator || currentUser?.role == .admin else { return }
 
         do {
+            // Realtime refresh, coordinator ekranını canlıya yakın tutar ve
+            // her citizen/volunteer işleminden sonra manuel yenileme gerektirmez.
             try await realtimeSubscription.start(
                 channelName: "coordinator-dashboard-\(currentUser?.id.uuidString ?? "unknown")",
                 registrations: [
@@ -96,7 +103,7 @@ final class CoordinatorDashboardViewModel {
                 await self?.loadRequests(currentUser: currentUser)
             }
         } catch {
-            // Manual refresh remains available if realtime is temporarily unavailable.
+            // Realtime geçici olarak çalışmazsa manuel yenileme kullanılmaya devam eder.
         }
     }
 
@@ -128,6 +135,8 @@ final class CoordinatorDashboardViewModel {
         defer { updatingRequestId = nil }
 
         do {
+            // Status güncellemesi RPC kullanır çünkü completed/cancelled işlemleri
+            // request satırını, assignment satırlarını ve volunteer uygunluğunu birlikte etkileyebilir.
             let updatedRequests: [HelpRequestRecord] = try await supabase
                 .rpc(
                     "coordinator_update_help_request_status",
@@ -198,6 +207,8 @@ final class CoordinatorDashboardViewModel {
     }
 
     func allowedStatusTargets(for request: HelpRequestRecord) -> [HelpRequestStatus] {
+        // Coordinator yalnızca geçerli sonraki durumlara geçiş yapabilir.
+        // Bu, lifecycle akışını UI tarafındaki geçersiz atlamalara karşı korur.
         switch request.statusValue {
         case .open:
             return [.cancelled]
@@ -214,6 +225,7 @@ final class CoordinatorDashboardViewModel {
         guard requestHasVolunteerCapacity(request) else { return [] }
 
         return availableVolunteers.filter { volunteer in
+            // Assignment seçici için eşleşme kuralı.
             volunteer.id != request.citizenId
                 && volunteer.availabilityValue == .available
                 && !volunteer.skillsValue.isEmpty
@@ -254,6 +266,8 @@ final class CoordinatorDashboardViewModel {
         defer { updatingRequestId = nil }
 
         do {
+            // RPC öncesi yapılan güncel kontroller, eski dashboard verisiyle
+            // başka cihazda busy olmuş bir volunteer atanmasını engeller.
             let activeAssignments: [HelpRequestVolunteerRecord] = try await supabase
                 .from("help_request_volunteers")
                 .select()
@@ -359,6 +373,8 @@ final class CoordinatorDashboardViewModel {
     }
 
     private func sortForCoordinator(_ lhs: HelpRequestRecord, _ rhs: HelpRequestRecord) -> Bool {
+        // Dashboard önceliği: önce aktif requestler, sonra critical/high urgency,
+        // ardından yakın zamanda güncellenen kayıtlar.
         if lhs.statusValue.isActive != rhs.statusValue.isActive {
             return lhs.statusValue.isActive
         }

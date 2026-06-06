@@ -10,6 +10,8 @@ import SwiftUI
 struct NearbyRequestsView: View {
     let sessionViewModel: AuthSessionViewModel
 
+    // Nearby hem backend’den yüklenen request verisini hem de lokal filtre inputlarını tutar
+    // search center/radius için kullanılır.
     @State private var viewModel = NearbyRequestsViewModel()
     @StateObject private var locationService = DeviceLocationService()
     @State private var latitudeText = ""
@@ -26,6 +28,8 @@ struct NearbyRequestsView: View {
     }
 
     private var filteredRequests: [NearbyRequestItem] {
+        // Mesafe filtresi active requestler yüklendikten sonra lokal olarak yapılır.
+        // Bu, manual/GPS center desteğini korurken demoyu sade tutar.
         let centerLatitude = Double(latitudeText.replacingOccurrences(of: ",", with: "."))
         let centerLongitude = Double(longitudeText.replacingOccurrences(of: ",", with: "."))
         let radius = Double(radiusText.replacingOccurrences(of: ",", with: ".")) ?? 10
@@ -63,6 +67,7 @@ struct NearbyRequestsView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 14) {
+                        // Başlık ve konum/yarıçap kontrolleri.
                         header
                             .padding(.top, 8)
 
@@ -71,6 +76,8 @@ struct NearbyRequestsView: View {
                         if filteredRequests.isEmpty {
                             emptyState
                         } else {
+                            // Her kartta Accept aksiyonu bulunur. ViewModel/RPC
+                            // busy volunteers veya dolu requestlerin kabul edilmesini engeller.
                             ForEach(filteredRequests) { item in
                                 NearbyRequestCard(
                                     item: item,
@@ -121,6 +128,7 @@ struct NearbyRequestsView: View {
             }
         }
         .task {
+            // İlk yükleme hem realtime hem de 10 saniyelik polling fallback başlatır.
             await viewModel.loadOpenRequests(currentUserId: currentUser?.id)
             await viewModel.startRealtime(currentUserId: currentUser?.id)
             viewModel.startPollingFallback(currentUserId: currentUser?.id)

@@ -1,4 +1,6 @@
--- Phase 4.2: Citizen request update + evidence upload
+-- UrbanShield - Evidence photo metadata ve Supabase Storage ayarları
+-- Fotoğraf dosyasının kendisi Supabase Storage içindeki request-evidence bucketta saklanır.
+-- public.request_evidence tablosu ise dosyanın metadata bilgisini tutar.
 
 create table if not exists public.request_evidence (
     id uuid primary key default gen_random_uuid(),
@@ -10,8 +12,6 @@ create table if not exists public.request_evidence (
     file_size integer not null default 0,
     created_at timestamptz not null default now()
 );
-
-alter table public.request_evidence enable row level security;
 
 alter table public.request_evidence
 drop constraint if exists request_evidence_content_type_check;
@@ -33,22 +33,12 @@ on public.request_evidence(request_id);
 create index if not exists request_evidence_uploaded_by_idx
 on public.request_evidence(uploaded_by);
 
-drop policy if exists "citizens can update own active help requests" on public.help_requests;
-create policy "citizens can update own active help requests"
-on public.help_requests
-for update
-to authenticated
-using (
-    citizen_id = auth.uid()
-    and status not in ('completed', 'cancelled')
+-- Evidence görüntüleme izni:
+-- request sahibi, assigned volunteer, coordinator ve admin görebilir.
+create or replace function public.can_view_request_evidence(
+    p_request_id uuid,
+    p_user_id uuid
 )
-with check (
-    citizen_id = auth.uid()
-    and status not in ('completed', 'cancelled')
-);
-
-drop policy if exists "request evidence visible to related users" on public.request_evidence;
-create or replace function public.can_view_request_evidence(p_request_id uuid, p_user_id uuid)
 returns boolean
 language sql
 security definer
@@ -76,7 +66,12 @@ $$;
 grant execute on function public.can_view_request_evidence(uuid, uuid)
 to authenticated;
 
-create or replace function public.can_upload_request_evidence(p_request_id uuid, p_user_id uuid)
+-- Evidence upload izni:
+-- request owner veya active assigned volunteer upload yapabilir.
+create or replace function public.can_upload_request_evidence(
+    p_request_id uuid,
+    p_user_id uuid
+)
 returns boolean
 language sql
 security definer
@@ -105,6 +100,8 @@ $$;
 grant execute on function public.can_upload_request_evidence(uuid, uuid)
 to authenticated;
 
+-- Storage upload sonrası metadata kaydını güvenli şekilde oluşturur.
+-- Dosya yolu şu formatta olmalıdır: request_id/uploader_id/random-file-name.jpg
 create or replace function public.create_request_evidence_record(
     p_request_id uuid,
     p_file_path text,
@@ -168,13 +165,15 @@ grant execute on function public.create_request_evidence_record(
     integer
 ) to authenticated;
 
-create policy "request evidence visible to related users"
+alter table public.request_evidence enable row level security;
+
+drop policy if exists "related users can view request evidence" on public.request_evidence;
+create policy "related users can view request evidence"
 on public.request_evidence
 for select
 to authenticated
 using (public.can_view_request_evidence(request_evidence.request_id, auth.uid()));
 
-drop policy if exists "citizens can insert evidence for own active requests" on public.request_evidence;
 drop policy if exists "owners and assigned volunteers can insert evidence" on public.request_evidence;
 create policy "owners and assigned volunteers can insert evidence"
 on public.request_evidence
@@ -185,6 +184,7 @@ with check (
     and public.can_upload_request_evidence(request_evidence.request_id, auth.uid())
 );
 
+-- Supabase Storage bucket kurulumu.
 insert into storage.buckets (
     id,
     name,
@@ -205,6 +205,7 @@ set
     file_size_limit = excluded.file_size_limit,
     allowed_mime_types = excluded.allowed_mime_types;
 
+-- Storage object name içinden request_id okur.
 create or replace function public.request_evidence_request_id(object_name text)
 returns uuid
 language plpgsql
@@ -218,9 +219,7 @@ exception
 end;
 $$;
 
-drop policy if exists "citizens can upload request evidence files" on storage.objects;
 drop policy if exists "owners and assigned volunteers can upload request evidence files" on storage.objects;
-drop policy if exists "authenticated users can upload request evidence files" on storage.objects;
 create policy "owners and assigned volunteers can upload request evidence files"
 on storage.objects
 for insert
@@ -228,6 +227,8 @@ to authenticated
 with check (
     bucket_id = 'request-evidence'
     and auth.uid() is not null
+    and lower(split_part(name, '/', 2)) = auth.uid()::text
+    and public.can_upload_request_evidence(public.request_evidence_request_id(name), auth.uid())
 );
 
 drop policy if exists "related users can read request evidence files" on storage.objects;
@@ -239,33 +240,3 @@ using (
     bucket_id = 'request-evidence'
     and public.can_view_request_evidence(public.request_evidence_request_id(name), auth.uid())
 );
-
-do $$
-begin
-    if to_regclass('public.activity_logs') is not null then
-        alter table public.activity_logs
-        drop constraint if exists activity_logs_action_type_check;
-
-        alter table public.activity_logs
-        add constraint activity_logs_action_type_check
-        check (
-            action_type in (
-                'request_created',
-                'request_updated',
-                'request_cancelled',
-                'request_confirmed',
-                'request_started',
-                'request_completed',
-                'request_status_updated',
-                'request_priority_updated',
-                'volunteer_assigned',
-                'supply_support_logged',
-                'announcement_published',
-                'suspicious_report_submitted',
-                'suspicious_report_reviewed',
-                'role_updated',
-                'evidence_uploaded'
-            )
-        );
-    end if;
-end $$;

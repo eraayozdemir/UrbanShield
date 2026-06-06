@@ -6,6 +6,8 @@
 import Foundation
 
 enum OfflineCacheStore {
+    // Hafif demo/offline yedek akışı. Seçili request liste/detay verilerini
+    // UserDefaults içinde saklar; böylece ağ hatasında ekranlar son bilinen veriyi gösterebilir.
     private static let prefix = "urbanshield.offline-cache."
 
     static func save<T: Codable>(_ value: T, forKey key: String) {
@@ -19,6 +21,7 @@ enum OfflineCacheStore {
     }
 
     static func load<T: Codable>(_ type: T.Type, forKey key: String) -> OfflineCacheResult<T>? {
+        // Kayıtlı değer yoksa veya decode başarısız olursa nil döndürür.
         guard let data = UserDefaults.standard.data(forKey: prefix + key),
               let envelope = try? JSONDecoder.urbanShieldCacheDecoder.decode(OfflineCacheEnvelope<T>.self, from: data) else {
             return nil

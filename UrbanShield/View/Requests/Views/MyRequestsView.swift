@@ -8,6 +8,7 @@ import SwiftUI
 struct MyRequestsView: View {
     let sessionViewModel: AuthSessionViewModel
 
+    // MyRequestsViewModel yalnızca mevcut citizen kullanıcısının kendi requestlerini yükler.
     @State private var viewModel = MyRequestsViewModel()
     @State private var selectedFilter: RequestListFilter = .all
     private let horizontalPadding: CGFloat = 16
@@ -20,6 +21,7 @@ struct MyRequestsView: View {
     }
 
     private var filteredRequests: [HelpRequestRecord] {
+        // All / Active / Completed / Cancelled için lokal status filtresi.
         viewModel.requests.filter { selectedFilter.includes($0) }
     }
 
@@ -39,6 +41,7 @@ struct MyRequestsView: View {
                         RequestSummaryBar(requests: viewModel.requests)
                             .padding(.horizontal, horizontalPadding)
 
+                        // Listenin üstündeki segmented filter bar.
                         RequestFilterBar(selection: $selectedFilter)
                             .padding(.bottom, 4)
 
@@ -46,6 +49,7 @@ struct MyRequestsView: View {
                             filteredEmptyState
                         } else {
                             ForEach(filteredRequests) { request in
+                                // Bir satıra dokunmak ortak RequestDetailView ekranını açar.
                                 NavigationLink {
                                     RequestDetailView(
                                         requestId: request.id,
@@ -75,6 +79,7 @@ struct MyRequestsView: View {
             }
         }
         .overlay(alignment: .bottomTrailing) {
+            // Hızlı citizen request creation için floating create butonu.
             NavigationLink {
                 CreateRequestView(sessionViewModel: sessionViewModel)
             } label: {

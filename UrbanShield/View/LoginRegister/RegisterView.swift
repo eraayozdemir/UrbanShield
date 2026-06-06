@@ -15,7 +15,7 @@ struct RegisterView: View {
         VStack(spacing: 20) {
             Spacer()
 
-            // Header
+            // Başlık
             VStack(spacing: 8) {
                 Image(systemName: "person.badge.plus")
                     .font(.system(size: 56))

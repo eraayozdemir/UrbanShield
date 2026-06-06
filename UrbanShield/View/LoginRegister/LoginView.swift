@@ -17,7 +17,7 @@ struct LoginView: View {
             VStack(spacing: 20) {
                 Spacer()
 
-                // Header
+                // Başlık
                 VStack(spacing: 8) {
                     Image(systemName: "shield.fill")
                         .font(.system(size: 56))
@@ -88,7 +88,7 @@ struct LoginView: View {
 
                 Spacer()
 
-                // Navigate to Register
+                // Register ekranına geçiş
                 Button("Don't have an account? Sign Up") {
                     showRegister = true
                 }

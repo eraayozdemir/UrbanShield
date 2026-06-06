@@ -97,7 +97,7 @@ final class VolunteerTasksViewModel {
                 await self?.loadTasks(volunteerId: volunteerId)
             }
         } catch {
-            // Manual refresh remains available if realtime is temporarily unavailable.
+            // Realtime geçici olarak çalışmazsa manuel yenileme kullanılmaya devam eder.
         }
     }
 

@@ -5,6 +5,9 @@
 
 import Foundation
 
+// Request lifecycle terminolojisinin merkezi yeri RequestSharedTypes dosyasıdır.
+// Jüri request type, urgency level veya status ekleme/çıkarma isterse,
+// önce buradan başlayın, sonra ilgili SQL constraint/RPC fonksiyonlarını güncelleyin.
 enum HelpRequestType: String, CaseIterable, Identifiable, Codable {
     case earthquake
     case fire
@@ -87,21 +90,29 @@ enum HelpRequestStatus: String, CaseIterable, Identifiable, Codable {
         self == .open || self == .confirmed || self == .inProgress
     }
 
+    // Active status değerleri Nearby gibi operasyonel ekranlarda,
+    // Coordinator Dashboard ve Volunteer Tasks ekranlarında gösterilir.
     var isActive: Bool {
         self == .open || self == .confirmed || self == .inProgress
     }
 
+    // Request hâlâ yardım ihtiyacı duyuyorsa volunteer eklenebilir.
+    // Completed/cancelled requestler bilinçli olarak kapalı kabul edilir.
     var acceptsVolunteers: Bool {
         self == .open || self == .confirmed || self == .inProgress
     }
 }
 
 extension HelpRequestUrgency {
+    // Mevcut demo kuralı: critical requestler üç active volunteer alabilir,
+    // daha düşük tüm urgency seviyeleri bir volunteer slotuna sahiptir.
     var volunteerCapacity: Int {
         self == .critical ? 3 : 1
     }
 }
 
+// help_requests tablosunu yansıtır. CodingKeys Swift camelCase isimlerini
+// Supabase/PostgreSQL snake_case kolon isimlerine eşler.
 struct HelpRequestRecord: Codable, Identifiable, Equatable {
     let id: UUID
     let citizenId: UUID
@@ -149,6 +160,9 @@ struct HelpRequestRecord: Codable, Identifiable, Equatable {
         urgencyValue.volunteerCapacity
     }
 
+    // Mevcut giriş yapmış kullanıcı assigned volunteer olduğunda kullanılır.
+    // Assignment status bilgisini temel request satırının üzerine uygular; böylece
+    // detail ekranı volunteer task durumunu gösterebilir.
     func applyingVolunteerAssignment(_ assignment: HelpRequestVolunteerRecord) -> HelpRequestRecord {
         HelpRequestRecord(
             id: id,
@@ -168,6 +182,8 @@ struct HelpRequestRecord: Codable, Identifiable, Equatable {
     }
 }
 
+// help_request_volunteers tablosunu yansıtır. Her satır bir active veya historical
+// request volunteer assignment kaydını temsil eder.
 struct HelpRequestVolunteerRecord: Codable, Identifiable, Equatable {
     let id: UUID
     let requestId: UUID
@@ -194,6 +210,8 @@ struct HelpRequestVolunteerRecord: Codable, Identifiable, Equatable {
     }
 }
 
+// Supabase Storage içinde saklanan dosya için metadata satırı.
+// Gerçek image byte verisi request-evidence bucket içinde bulunur.
 struct RequestEvidenceRecord: Codable, Identifiable, Equatable {
     let id: UUID
     let requestId: UUID

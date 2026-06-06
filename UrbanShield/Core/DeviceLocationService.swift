@@ -9,6 +9,8 @@ import Foundation
 
 @MainActor
 final class DeviceLocationService: NSObject, ObservableObject {
+    // CreateRequestView latitude/longitude alanlarını otomatik doldurmak,
+    // loading state göstermek veya manuel koordinat girişi yedeğine dönmek için bu değerleri izler.
     @Published private(set) var coordinate: CLLocationCoordinate2D?
     @Published private(set) var authorizationStatus: CLAuthorizationStatus
     @Published private(set) var isRequestingLocation = false
@@ -20,6 +22,8 @@ final class DeviceLocationService: NSObject, ObservableObject {
         authorizationStatus = manager.authorizationStatus
         super.init()
         manager.delegate = self
+        // Prototip için yüz metre hassasiyet yeterlidir ve
+        // hassas navigasyon düzeyi takibe göre daha az cihaz/ağ kaynağı kullanır.
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
     }
 
@@ -33,15 +37,19 @@ final class DeviceLocationService: NSObject, ObservableObject {
         errorMessage = nil
 
         guard CLLocationManager.locationServicesEnabled() else {
+            // Uygulama request creation işlemini tamamen engellemez; kullanıcı yine de
+            // koordinatları manuel girebilir.
             errorMessage = "Location Services are disabled on this device."
             return
         }
 
         switch authorizationStatus {
         case .notDetermined:
+            // İlk kez izin isteme ekranı.
             isRequestingLocation = true
             manager.requestWhenInUseAuthorization()
         case .authorizedAlways, .authorizedWhenInUse:
+            // Tek seferlik konum isteği. Bu sürekli GPS takibi değildir.
             isRequestingLocation = true
             manager.requestLocation()
         case .denied:

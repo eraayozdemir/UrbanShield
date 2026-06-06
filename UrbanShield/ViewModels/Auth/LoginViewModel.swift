@@ -10,12 +10,14 @@ import Observation
 @Observable
 final class LoginViewModel {
 
+    // LoginView form durumu.
     var email: String = ""
     var password: String = ""
     var isLoading: Bool = false
     var errorMessage: String?
 
     func signIn() async -> User? {
+        // Supabase çağrısından önce lokal boş alan kontrolü.
         let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedEmail.isEmpty, !password.isEmpty else {
             errorMessage = "Please enter your email and password."
@@ -27,6 +29,7 @@ final class LoginViewModel {
         defer { isLoading = false }
 
         do {
+            // Auth başarılı olduktan sonra AuthService profil suspension durumunu da kontrol eder.
             return try await AuthService.shared.signIn(email: trimmedEmail, password: password)
         } catch {
             errorMessage = friendlySignInError(from: error)
@@ -35,6 +38,7 @@ final class LoginViewModel {
     }
 
     private func friendlySignInError(from error: Error) -> String {
+        // Ham Supabase/Auth mesajlarını kullanıcı dostu login hatalarına çevirir.
         if let appError = error as? AppError,
            let description = appError.errorDescription {
             return description

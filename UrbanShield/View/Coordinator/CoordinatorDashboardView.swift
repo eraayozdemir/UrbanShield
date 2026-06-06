@@ -8,6 +8,8 @@ import SwiftUI
 struct CoordinatorDashboardView: View {
     let sessionViewModel: AuthSessionViewModel
 
+    // Dashboard ViewModel Supabase yükleme işlemlerini, status güncellemelerini,
+    // volunteer atamalarını ve son coordination loglarını yönetir.
     @State private var viewModel = CoordinatorDashboardViewModel()
     @State private var selectedFilter: CoordinatorRequestFilter = .active
 
@@ -19,6 +21,7 @@ struct CoordinatorDashboardView: View {
     }
 
     private var filteredRequests: [HelpRequestRecord] {
+        // Dashboard sekmeleri/kartları için lokal status filtresi.
         viewModel.requests.filter { selectedFilter.includes($0.statusValue) }
     }
 
@@ -44,12 +47,14 @@ struct CoordinatorDashboardView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 14) {
+                        // Başlık coordinator işlevini özetler.
                         dashboardHeader
                             .padding(.top, 8)
 
                         metricsGrid
 
                         if !viewModel.activityLogs.isEmpty {
+                            // En son coordination log kayıtlarını gösterir.
                             recentActivity
                         }
 
@@ -58,6 +63,8 @@ struct CoordinatorDashboardView: View {
                         if filteredRequests.isEmpty {
                             emptyState
                         } else {
+                            // Coordinator kartları detay ekranına girmeden doğrudan status değişimini
+                            // ve volunteer atamasını destekler.
                             ForEach(filteredRequests) { request in
                                 NavigationLink {
                                     RequestDetailView(
@@ -122,6 +129,7 @@ struct CoordinatorDashboardView: View {
             }
         }
         .task {
+            // İlk dashboard yüklemesi ve realtime aboneliği.
             await reloadDashboard()
             await viewModel.startRealtime(currentUser: currentUser)
         }

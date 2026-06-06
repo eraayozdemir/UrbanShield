@@ -2,11 +2,13 @@
 //  ContentView.swift
 //  UrbanShield
 //
-//  Created by Eray on 4.04.2026.
+//  Eray tarafından 4.04.2026 tarihinde oluşturuldu.
 //
 
 import SwiftUI
 
+// Eski template view. Gerçek uygulama UrbanShieldApp -> RootView üzerinden başlar.
+// Bu dosya gerçek uygulama navigasyon akışında kullanılmaz.
 struct ContentView: View {
     var body: some View {
         VStack {

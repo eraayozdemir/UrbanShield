@@ -62,7 +62,7 @@ final class CoordinatorMapViewModel {
                 await self?.loadRequests(currentUser: currentUser)
             }
         } catch {
-            // Manual refresh remains available if realtime is temporarily unavailable.
+            // Realtime geçici olarak çalışmazsa manuel yenileme kullanılmaya devam eder.
         }
     }
 

@@ -5,8 +5,8 @@
 
 import SwiftUI
 
-/// The top-level view — switches between loading, auth, and role-based home screens.
-/// Owns AuthSessionViewModel and passes it down the view hierarchy.
+/// En üst seviye view; loading, auth ve role göre ana ekranlar arasında geçiş yapar.
+/// AuthSessionViewModel örneğini sahiplenir ve view hiyerarşisine aktarır.
 struct RootView: View {
 
     @State private var sessionViewModel = AuthSessionViewModel()

@@ -11,6 +11,7 @@ import Supabase
 @Observable
 final class AdminUserManagementViewModel {
 
+    // AdminUserManagementView içinde gösterilen kullanıcı listesi.
     var users: [ProfileUserRecord] = []
     var isLoading = false
     var updatingUserId: UUID?
@@ -31,6 +32,7 @@ final class AdminUserManagementViewModel {
         defer { isLoading = false }
 
         do {
+            // Admin role ve suspension yönetimi için tüm profile satırlarını görür.
             users = try await supabase
                 .from("profiles")
                 .select()
@@ -66,6 +68,8 @@ final class AdminUserManagementViewModel {
         defer { updatingUserId = nil }
 
         do {
+            // Role güncellemesi yalnızca admin içindir. UI kullanıcının kendi admin rolünü düşürmesini engeller ve
+            // RLS/RPC politikaları da yetkili role değişikliklerini korumalıdır.
             let updatedUser: ProfileUserRecord = try await supabase
                 .from("profiles")
                 .update(AdminRoleUpdate(role: role.rawValue))
@@ -122,6 +126,8 @@ final class AdminUserManagementViewModel {
         defer { updatingUserId = nil }
 
         do {
+            // Suspension RPC kullanır çünkü kullanıcı active volunteer ise
+            // backend task kaydını ve request kapasitesini güvenli şekilde boşa çıkarmalıdır.
             let updatedUsers: [ProfileUserRecord] = try await supabase
                 .rpc(
                     "set_profile_suspension",
